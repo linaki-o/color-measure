@@ -314,35 +314,48 @@ function buildDiagram() {
     [0.7347,0.2653,0], // purple limit
   ];
 
-  // Fan triangulation from D65 to consecutive locus points, colored by wavelength.
+  // Pre-compute pixel positions and the smooth-path 'd' string once; reuse for
+  // fan fill + the outline on top.
+  const points = locus.map(p => toPixel(p[0], p[1], plot));
+
+  // Fan wedges meeting at midpoints → the colored fill has a C1 outer boundary.
   const wp0 = toPixel(0.3127, 0.3290, plot);
   const fanGroup = svg('g', { id: 'horseshoe-fan' }, diagram);
   for (let i = 0; i < locus.length - 1; i++) {
-    const [x1, y1] = locus[i];
-    const [x2, y2, w2] = locus[i + 1];
+    const w2 = locus[i + 1][2];
     const fill = w2 === 0 ? '#780082' : wavelengthToColor((locus[i][2] + w2) / 2);
-    const p1 = toPixel(x1, y1, plot);
-    const p2 = toPixel(x2, y2, plot);
+    const mx = (points[i].x + points[i + 1].x) / 2;
+    const my = (points[i].y + points[i + 1].y) / 2;
     const tri = document.createElementNS(svgNS, 'polygon');
     tri.setAttribute('points',
-      `${wp0.x.toFixed(1)},${wp0.y.toFixed(1)} ${p1.x.toFixed(1)},${p1.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`);
+      `${wp0.x.toFixed(1)},${wp0.y.toFixed(1)} ` +
+      `${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ` +
+      `${mx.toFixed(1)},${my.toFixed(1)}`);
     tri.setAttribute('fill', fill);
     tri.setAttribute('stroke', 'none');
     fanGroup.appendChild(tri);
   }
 
   // Line of purples: dashed gray edge from 380nm (locus[0]) to purple limit (locus[last]).
-  const start = toPixel(locus[0][0], locus[0][1], plot);
-  const end   = toPixel(locus[locus.length-1][0], locus[locus.length-1][1], plot);
-  svg('line', { x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+  svg('line', { x1: points[0].x, y1: points[0].y, x2: points[points.length-1].x, y2: points[points.length-1].y,
     stroke: '#222', 'stroke-width': 1, 'stroke-dasharray': '5,3' }, diagram);
 
-  // Crisp spectral locus outline (skip the purple-limit closure).
-  const locusOutline = svg('polyline', { fill: 'none', stroke: '#222', 'stroke-width': 1.5 }, diagram);
-  locusOutline.setAttribute('points', locus.slice(0, -1).map(p => {
-    const px = toPixel(p[0], p[1], plot);
-    return `${px.x.toFixed(1)},${px.y.toFixed(1)}`;
-  }).join(' '));
+  // Smooth spectral-locus outline: Catmull-Rom → quadratic Bezier through midpoints.
+  // Pass a C1 curve through every consecutive midpoint using each original vertex
+  // as the control point. No visible polygon facets at any zoom level.
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 1; i < points.length - 2; i++) {
+    const mx = (points[i].x + points[i + 1].x) / 2;
+    const my = (points[i].y + points[i + 1].y) / 2;
+    d += ` Q ${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ${mx.toFixed(1)},${my.toFixed(1)}`;
+  }
+  d += ` L ${points[points.length - 2].x.toFixed(1)},${points[points.length - 2].y.toFixed(1)}`;
+  const locusOutline = document.createElementNS(svgNS, 'path');
+  locusOutline.setAttribute('d', d);
+  locusOutline.setAttribute('fill', 'none');
+  locusOutline.setAttribute('stroke', '#222');
+  locusOutline.setAttribute('stroke-width', '1.5');
+  diagram.appendChild(locusOutline);
 
   // Tick labels at 480 / 580 / 680 for orientation.
   for (const [x, y, nm] of locus) {

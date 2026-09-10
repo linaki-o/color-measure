@@ -97,25 +97,34 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
     private static void DrawColoredHorseshoe(SKCanvas c, SKRect plot)
     {
         var wp = ToPixel(WhitePoint.X, WhitePoint.Y, plot);
-        using var paint = new SKPaint { IsAntialias = true };
 
+        // Pre-compute pixel positions once; reused for fan fill + smooth outline.
+        var pixels = new SKPoint[Locus.Length];
+        for (int i = 0; i < Locus.Length; i++)
+            pixels[i] = ToPixel(Locus[i].X, Locus[i].Y, plot);
+
+        // Fan wedges meeting at midpoints so the outer boundary is C1-continuous — no
+        // visible polygon facets even at high zoom.
+        using var paint = new SKPaint { IsAntialias = true };
         for (int i = 0; i < Locus.Length - 1; i++)
         {
-            var (x1, y1, w1) = Locus[i];
-            var (x2, y2, w2) = Locus[i + 1];
+            var w1 = Locus[i].Nm;
+            var w2 = Locus[i + 1].Nm;
             paint.Color = (w2 == 0) ? new SKColor(120, 0, 130) : WavelengthToColor((w1 + w2) / 2.0);
+
+            var m = new SKPoint(
+                (pixels[i].X + pixels[i + 1].X) / 2f,
+                (pixels[i].Y + pixels[i + 1].Y) / 2f);
 
             using var path = new SKPath();
             path.MoveTo(wp);
-            path.LineTo(ToPixel(x1, y1, plot));
-            path.LineTo(ToPixel(x2, y2, plot));
+            path.LineTo(pixels[i]);
+            path.LineTo(m);
             path.Close();
             c.DrawPath(path, paint);
         }
 
         // Dashed line of purples on top of the fill.
-        var start = ToPixel(Locus[0].X, Locus[0].Y, plot);
-        var end = ToPixel(Locus[^1].X, Locus[^1].Y, plot);
         using (var dashEffect = SKPathEffect.CreateDash(new float[] { 5, 3 }, 0))
         using (var lopStroke = new SKPaint
         {
@@ -123,26 +132,20 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             IsStroke = true, StrokeWidth = 1f, IsAntialias = true, PathEffect = dashEffect,
         })
         {
-            c.DrawLine(start, end, lopStroke);
+            c.DrawLine(pixels[0], pixels[^1], lopStroke);
         }
 
-        // Crisp spectral-locus outline (380nm → 770nm, excluding the purple-limit closure).
+        // Smooth spectral-locus outline (quadratic-Bezier through midpoints → C1 curve).
         using (var locusStroke = new SKPaint
         {
             Color = new SKColor(40, 40, 40),
             IsStroke = true, StrokeWidth = 1.5f, IsAntialias = true,
         })
         {
-            using var path = new SKPath();
-            path.MoveTo(ToPixel(Locus[0].X, Locus[0].Y, plot));
-            for (int i = 1; i < Locus.Length - 1; i++)
-            {
-                path.LineTo(ToPixel(Locus[i].X, Locus[i].Y, plot));
-            }
-            c.DrawPath(path, locusStroke);
+            c.DrawPath(BuildSmoothLocusPath(pixels, includePurpleLimit: false), locusStroke);
         }
 
-        // A few wavelength tick labels for orientation.
+        // Wavelength tick labels at 480 / 580 / 680 for orientation.
         using var labelFont = new SKFont(SKTypeface.Default, 9);
         using var labelPaint = new SKPaint { Color = new SKColor(40, 40, 40), IsAntialias = true };
         foreach (var (x, y, nm) in Locus)
@@ -151,6 +154,29 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             var pixel = ToPixel(x, y, plot);
             c.DrawText($"{nm}", pixel.X + 4, pixel.Y - 4, SKTextAlign.Left, labelFont, labelPaint);
         }
+    }
+
+    /// <summary>
+    /// Smooth curve passing through every consecutive midpoint of <paramref name="pixels"/>,
+    /// using each input point as a quadratic-Bezier control point. Result is C1-continuous
+    /// with one control per vertex — no visible polygon facets. Set
+    /// <paramref name="includePurpleLimit"/> to <c>false</c> for the open spectral locus;
+    /// the line of purples closes the gap separately.
+    /// </summary>
+    private static SKPath BuildSmoothLocusPath(SKPoint[] pixels, bool includePurpleLimit)
+    {
+        var end = includePurpleLimit ? pixels.Length : pixels.Length - 1;
+        var path = new SKPath();
+        path.MoveTo(pixels[0]);
+        for (int i = 1; i < end - 1; i++)
+        {
+            var mid = new SKPoint(
+                (pixels[i].X + pixels[i + 1].X) / 2f,
+                (pixels[i].Y + pixels[i + 1].Y) / 2f);
+            path.QuadTo(pixels[i], mid);
+        }
+        path.LineTo(pixels[end - 1]);
+        return path;
     }
 
     /// <summary>
