@@ -299,22 +299,58 @@ function buildDiagram() {
     svg('line', { x1: plot.x, y1: p.y, x2: plot.x + plot.width, y2: p.y }, grid);
   }
 
-  // Spectral locus
+  // Spectral locus with wavelength tags + purple limit. Last entry has nm == 0.
   const locus = [
-    [0.1741,0.0050],[0.1738,0.0049],[0.1733,0.0048],[0.1726,0.0048],[0.1714,0.0051],
-    [0.1703,0.0058],[0.1689,0.0069],[0.1669,0.0086],[0.1644,0.0109],[0.1611,0.0138],
-    [0.1566,0.0177],[0.1510,0.0227],[0.1440,0.0297],[0.1355,0.0389],[0.1241,0.0578],
-    [0.1096,0.0868],[0.0913,0.1327],[0.0687,0.2007],[0.0454,0.2950],[0.0235,0.4127],
-    [0.0082,0.5384],[0.0039,0.6548],[0.0139,0.7502],[0.0389,0.8120],[0.0743,0.8338],
-    [0.1142,0.8262],[0.1547,0.8059],[0.1929,0.7816],[0.2296,0.7543],[0.2658,0.7243],
-    [0.3016,0.6923],[0.3373,0.6589],[0.3731,0.6245],[0.4087,0.5896],[0.4441,0.5547],
-    [0.4788,0.5202],[0.5125,0.4866],[0.5448,0.4544],[0.5755,0.4242],[0.6042,0.3965],
+    [0.1741,0.0050,380],[0.1738,0.0049,390],[0.1733,0.0048,400],[0.1726,0.0048,410],
+    [0.1714,0.0051,420],[0.1703,0.0058,430],[0.1689,0.0069,440],[0.1669,0.0086,450],
+    [0.1644,0.0109,460],[0.1611,0.0138,470],[0.1566,0.0177,480],[0.1510,0.0227,490],
+    [0.1440,0.0297,500],[0.1355,0.0389,510],[0.1241,0.0578,520],[0.1096,0.0868,530],
+    [0.0913,0.1327,540],[0.0687,0.2007,550],[0.0454,0.2950,560],[0.0235,0.4127,570],
+    [0.0082,0.5384,580],[0.0039,0.6548,590],[0.0139,0.7502,600],[0.0389,0.8120,610],
+    [0.0743,0.8338,620],[0.1142,0.8262,630],[0.1547,0.8059,640],[0.1929,0.7816,650],
+    [0.2296,0.7543,660],[0.2658,0.7243,670],[0.3016,0.6923,680],[0.3373,0.6589,690],
+    [0.3731,0.6245,700],[0.4087,0.5896,710],[0.4441,0.5547,720],[0.4788,0.5202,730],
+    [0.5125,0.4866,740],[0.5448,0.4544,750],[0.5755,0.4242,760],[0.6042,0.3965,770],
+    [0.7347,0.2653,0], // purple limit
   ];
-  const locusPath = svg('polygon', { fill: 'none', stroke: '#bbb', 'stroke-width': 2 }, diagram);
-  locusPath.setAttribute('points', locus.map(p => {
+
+  // Fan triangulation from D65 to consecutive locus points, colored by wavelength.
+  const wp0 = toPixel(0.3127, 0.3290, plot);
+  const fanGroup = svg('g', { id: 'horseshoe-fan' }, diagram);
+  for (let i = 0; i < locus.length - 1; i++) {
+    const [x1, y1] = locus[i];
+    const [x2, y2, w2] = locus[i + 1];
+    const fill = w2 === 0 ? '#780082' : wavelengthToColor((locus[i][2] + w2) / 2);
+    const p1 = toPixel(x1, y1, plot);
+    const p2 = toPixel(x2, y2, plot);
+    const tri = document.createElementNS(svgNS, 'polygon');
+    tri.setAttribute('points',
+      `${wp0.x.toFixed(1)},${wp0.y.toFixed(1)} ${p1.x.toFixed(1)},${p1.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`);
+    tri.setAttribute('fill', fill);
+    tri.setAttribute('stroke', 'none');
+    fanGroup.appendChild(tri);
+  }
+
+  // Line of purples: dashed gray edge from 380nm (locus[0]) to purple limit (locus[last]).
+  const start = toPixel(locus[0][0], locus[0][1], plot);
+  const end   = toPixel(locus[locus.length-1][0], locus[locus.length-1][1], plot);
+  svg('line', { x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+    stroke: '#222', 'stroke-width': 1, 'stroke-dasharray': '5,3' }, diagram);
+
+  // Crisp spectral locus outline (skip the purple-limit closure).
+  const locusOutline = svg('polyline', { fill: 'none', stroke: '#222', 'stroke-width': 1.5 }, diagram);
+  locusOutline.setAttribute('points', locus.slice(0, -1).map(p => {
     const px = toPixel(p[0], p[1], plot);
     return `${px.x.toFixed(1)},${px.y.toFixed(1)}`;
   }).join(' '));
+
+  // Tick labels at 480 / 580 / 680 for orientation.
+  for (const [x, y, nm] of locus) {
+    if (nm !== 480 && nm !== 580 && nm !== 680) continue;
+    const p = toPixel(x, y, plot);
+    const t = svg('text', { x: p.x + 5, y: p.y - 4, 'font-size': 9, fill: '#222' }, diagram);
+    t.textContent = nm;
+  }
 
   // Axis labels
   [0, 0.4, 0.8].forEach(x => {
@@ -369,6 +405,21 @@ function darken(hex, amount) {
   const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
   const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
   return '#' + [r, g, b].map(n => n.toString(16).padStart(2, '0')).join('');
+}
+function wavelengthToColor(nm) {
+  let n = Math.max(380, Math.min(770, nm));
+  let r, g, b, factor = 1.0;
+  if (n < 440)      { r = -(n - 440) / 60; g = 0;          b = 1; }
+  else if (n < 490) { r = 0;              g = (n - 440) / 50; b = 1; }
+  else if (n < 510) { r = 0;              g = 1;          b = -(n - 510) / 20; }
+  else if (n < 580) { r = (n - 510) / 70; g = 1;          b = 0; }
+  else if (n < 645) { r = 1;              g = -(n - 645) / 65; b = 0; }
+  else              { r = 1;              g = 0;          b = 0; }
+  if (n < 420) factor = 0.3 + 0.7 * (n - 380) / 40;
+  else if (n > 700) factor = 0.3 + 0.7 * (770 - n) / 70;
+  r *= factor; g *= factor; b *= factor;
+  const clamp = v => Math.max(0, Math.min(255, Math.round(v * 255)));
+  return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
 }
 
 function buildToolbar(plot) {

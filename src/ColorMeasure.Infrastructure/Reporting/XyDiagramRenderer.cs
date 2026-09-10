@@ -9,34 +9,37 @@ public interface IXyDiagramRenderer
 }
 
 /// <summary>
-/// Renders a CIE 1931 xy chromaticity diagram with the spectral locus, target gamut outlines,
-/// measured primaries, and coverage labels. Backed by SkiaSharp so it works in any host.
+/// Renders a CIE 1931 xy chromaticity diagram with the spectral locus filled in
+/// visible-spectrum colors (fan triangulation from D65), the line of purples as a
+/// dashed edge, target gamut outlines, and measured primaries as dashed overlays.
 /// </summary>
 public sealed class XyDiagramRenderer : IXyDiagramRenderer
 {
-    /// <summary>Distinct palette assigned to gamuts in order. Measured version uses a darker shade.</summary>
     private static readonly SKColor[] GamutPalette =
     {
-        new(31, 119, 180),    // blue       - sRGB
-        new(44, 160, 44),     // green      - DCI-P3
-        new(255, 127, 14),    // orange     - AdobeRGB
-        new(214, 39, 40),     // red        - Rec.2020
-        new(148, 103, 189),   // purple     - spare
-        new(140, 86, 75),     // brown      - spare
-        new(23, 190, 207),    // cyan       - spare
+        new(31, 119, 180), new(44, 160, 44), new(255, 127, 14),
+        new(214, 39, 40),  new(148, 103, 189), new(140, 86, 75),
+        new(23, 190, 207),
     };
 
-    private static readonly (double X, double Y)[] SpectralLocus =
+    // CIE 1931 spectral locus 380-770nm + ITU-R purple limit at (0.7347, 0.2653).
+    // The purple limit (nm == 0) is the closing endpoint of the line of purples.
+    private static readonly (double X, double Y, double Nm)[] Locus =
     {
-        (0.1741, 0.0050),(0.1738, 0.0049),(0.1733, 0.0048),(0.1726, 0.0048),(0.1714, 0.0051),
-        (0.1703, 0.0058),(0.1689, 0.0069),(0.1669, 0.0086),(0.1644, 0.0109),(0.1611, 0.0138),
-        (0.1566, 0.0177),(0.1510, 0.0227),(0.1440, 0.0297),(0.1355, 0.0389),(0.1241, 0.0578),
-        (0.1096, 0.0868),(0.0913, 0.1327),(0.0687, 0.2007),(0.0454, 0.2950),(0.0235, 0.4127),
-        (0.0082, 0.5384),(0.0039, 0.6548),(0.0139, 0.7502),(0.0389, 0.8120),(0.0743, 0.8338),
-        (0.1142, 0.8262),(0.1547, 0.8059),(0.1929, 0.7816),(0.2296, 0.7543),(0.2658, 0.7243),
-        (0.3016, 0.6923),(0.3373, 0.6589),(0.3731, 0.6245),(0.4087, 0.5896),(0.4441, 0.5547),
-        (0.4788, 0.5202),(0.5125, 0.4866),(0.5448, 0.4544),(0.5755, 0.4242),(0.6042, 0.3965),
+        (0.1741, 0.0050, 380), (0.1738, 0.0049, 390), (0.1733, 0.0048, 400), (0.1726, 0.0048, 410),
+        (0.1714, 0.0051, 420), (0.1703, 0.0058, 430), (0.1689, 0.0069, 440), (0.1669, 0.0086, 450),
+        (0.1644, 0.0109, 460), (0.1611, 0.0138, 470), (0.1566, 0.0177, 480), (0.1510, 0.0227, 490),
+        (0.1440, 0.0297, 500), (0.1355, 0.0389, 510), (0.1241, 0.0578, 520), (0.1096, 0.0868, 530),
+        (0.0913, 0.1327, 540), (0.0687, 0.2007, 550), (0.0454, 0.2950, 560), (0.0235, 0.4127, 570),
+        (0.0082, 0.5384, 580), (0.0039, 0.6548, 590), (0.0139, 0.7502, 600), (0.0389, 0.8120, 610),
+        (0.0743, 0.8338, 620), (0.1142, 0.8262, 630), (0.1547, 0.8059, 640), (0.1929, 0.7816, 650),
+        (0.2296, 0.7543, 660), (0.2658, 0.7243, 670), (0.3016, 0.6923, 680), (0.3373, 0.6589, 690),
+        (0.3731, 0.6245, 700), (0.4087, 0.5896, 710), (0.4441, 0.5547, 720), (0.4788, 0.5202, 730),
+        (0.5125, 0.4866, 740), (0.5448, 0.4544, 750), (0.5755, 0.4242, 760), (0.6042, 0.3965, 770),
+        (0.7347, 0.2653, 0),
     };
+
+    private static readonly (double X, double Y) WhitePoint = (0.3127, 0.3290);
 
     public byte[] RenderPng(Domain.Entities.MeasurementRun run, int width, int height)
     {
@@ -48,69 +51,9 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         const float left = 40, right = 40, top = 30, bottom = 50;
         var plot = SKRect.Create(left, top, width - left - right, height - top - bottom);
 
-        using (var grid = new SKPaint { Color = new SKColor(230, 230, 230), StrokeWidth = 1, IsStroke = true, IsAntialias = true })
-        {
-            for (double x = 0; x <= 0.8; x += 0.1)
-            {
-                var px = (float)(left + (x - 0.0) / 0.8 * plot.Width);
-                c.DrawLine(px, plot.Top, px, plot.Bottom, grid);
-            }
-            for (double y = 0; y <= 0.9; y += 0.1)
-            {
-                var py = (float)(top + (1 - (y - 0.0) / 0.9) * plot.Height);
-                c.DrawLine(plot.Left, py, plot.Right, py, grid);
-            }
-        }
-
-        using (var locus = new SKPaint { Color = new SKColor(180, 180, 180), IsStroke = true, StrokeWidth = 2, IsAntialias = true })
-        {
-            using var path = new SKPath();
-            for (int i = 0; i < SpectralLocus.Length; i++)
-            {
-                var pt = ToPixel(SpectralLocus[i].Item1, SpectralLocus[i].Item2, plot);
-                if (i == 0) path.MoveTo(pt); else path.LineTo(pt);
-            }
-            path.Close();
-            c.DrawPath(path, locus);
-        }
-
-        // Pair every target with a measured triangle that uses the same hue but darker.
-        var dashEffect = SKPathEffect.CreateDash(new float[] { 6, 4 }, 0);
-        for (int idx = 0; idx < run.GamutReports.Count; idx++)
-        {
-            var g = run.GamutReports[idx];
-            var color = GamutPalette[idx % GamutPalette.Length];
-            var measuredColor = new SKColor(
-                (byte)(color.Red * 7 / 10),
-                (byte)(color.Green * 7 / 10),
-                (byte)(color.Blue * 7 / 10));
-
-            // Target triangle: solid stroke, light fill
-            DrawGamut(c, plot,
-                g.Target.Red, g.Target.Green, g.Target.Blue, g.Target.White,
-                fill: new SKColor(color.Red, color.Green, color.Blue, 28),
-                stroke: color,
-                strokeWidth: 2.2f,
-                dashed: false);
-
-            // Measured triangle: dashed stroke, no fill
-            DrawGamut(c, plot,
-                g.MeasuredRed, g.MeasuredGreen, g.MeasuredBlue, g.MeasuredWhite,
-                fill: SKColors.Transparent,
-                stroke: measuredColor,
-                strokeWidth: 1.8f,
-                dashed: true,
-                dashEffect: dashEffect);
-
-            // White point dot (filled, target color)
-            var wp = ToPixel(g.MeasuredWhite.X, g.MeasuredWhite.Y, plot);
-            using (var dot = new SKPaint { Color = measuredColor, IsAntialias = true })
-            {
-                c.DrawCircle(wp, 3, dot);
-            }
-        }
-
-        // Legend in the top-right of the plot area, one row per target with coverage.
+        DrawGrid(c, plot);
+        DrawColoredHorseshoe(c, plot);
+        DrawGamuts(c, plot, run);
         DrawLegend(c, plot, run);
 
         using (var border = new SKPaint { Color = SKColors.Black, IsStroke = true, StrokeWidth = 1 })
@@ -131,29 +74,158 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         return data.ToArray();
     }
 
-    private static SKPoint ToPixel(double x, double y, SKRect plot)
+    private static void DrawGrid(SKCanvas c, SKRect plot)
     {
-        const double maxX = 0.8, maxY = 0.9;
-        var px = (float)(plot.Left + (x / maxX) * plot.Width);
-        var py = (float)(plot.Top + (1 - y / maxY) * plot.Height);
-        return new SKPoint(px, py);
+        using var grid = new SKPaint { Color = new SKColor(230, 230, 230), StrokeWidth = 1, IsStroke = true, IsAntialias = true };
+        for (double x = 0; x <= 0.8; x += 0.1)
+        {
+            var px = (float)(plot.Left + x / 0.8 * plot.Width);
+            c.DrawLine(px, plot.Top, px, plot.Bottom, grid);
+        }
+        for (double y = 0; y <= 0.9; y += 0.1)
+        {
+            var py = (float)(plot.Top + (1 - y / 0.9) * plot.Height);
+            c.DrawLine(plot.Left, py, plot.Right, py, grid);
+        }
     }
 
-    private static void DrawGamut(SKCanvas c, SKRect plot,
+    /// <summary>
+    /// Fan triangulation from D65 to consecutive spectral-locus points. Each triangle
+    /// is colored by its midpoint wavelength; the closing wedge (last real point → purple
+    /// limit) gets a synthetic purple so the line-of-purples area is visually distinct.
+    /// </summary>
+    private static void DrawColoredHorseshoe(SKCanvas c, SKRect plot)
+    {
+        var wp = ToPixel(WhitePoint.X, WhitePoint.Y, plot);
+        using var paint = new SKPaint { IsAntialias = true };
+
+        for (int i = 0; i < Locus.Length - 1; i++)
+        {
+            var (x1, y1, w1) = Locus[i];
+            var (x2, y2, w2) = Locus[i + 1];
+            paint.Color = (w2 == 0) ? new SKColor(120, 0, 130) : WavelengthToColor((w1 + w2) / 2.0);
+
+            using var path = new SKPath();
+            path.MoveTo(wp);
+            path.LineTo(ToPixel(x1, y1, plot));
+            path.LineTo(ToPixel(x2, y2, plot));
+            path.Close();
+            c.DrawPath(path, paint);
+        }
+
+        // Dashed line of purples on top of the fill.
+        var start = ToPixel(Locus[0].X, Locus[0].Y, plot);
+        var end = ToPixel(Locus[^1].X, Locus[^1].Y, plot);
+        using (var dashEffect = SKPathEffect.CreateDash(new float[] { 5, 3 }, 0))
+        using (var lopStroke = new SKPaint
+        {
+            Color = new SKColor(60, 60, 60, 220),
+            IsStroke = true, StrokeWidth = 1f, IsAntialias = true, PathEffect = dashEffect,
+        })
+        {
+            c.DrawLine(start, end, lopStroke);
+        }
+
+        // Crisp spectral-locus outline (380nm → 770nm, excluding the purple-limit closure).
+        using (var locusStroke = new SKPaint
+        {
+            Color = new SKColor(40, 40, 40),
+            IsStroke = true, StrokeWidth = 1.5f, IsAntialias = true,
+        })
+        {
+            using var path = new SKPath();
+            path.MoveTo(ToPixel(Locus[0].X, Locus[0].Y, plot));
+            for (int i = 1; i < Locus.Length - 1; i++)
+            {
+                path.LineTo(ToPixel(Locus[i].X, Locus[i].Y, plot));
+            }
+            c.DrawPath(path, locusStroke);
+        }
+
+        // A few wavelength tick labels for orientation.
+        using var labelFont = new SKFont(SKTypeface.Default, 9);
+        using var labelPaint = new SKPaint { Color = new SKColor(40, 40, 40), IsAntialias = true };
+        foreach (var (x, y, nm) in Locus)
+        {
+            if (nm != 480 && nm != 580 && nm != 680) continue;
+            var pixel = ToPixel(x, y, plot);
+            c.DrawText($"{nm}", pixel.X + 4, pixel.Y - 4, SKTextAlign.Left, labelFont, labelPaint);
+        }
+    }
+
+    /// <summary>
+    /// Approximate visible-spectrum color from wavelength (Bruton's piecewise-linear fit).
+    /// </summary>
+    private static SKColor WavelengthToColor(double nm)
+    {
+        if (nm < 380) nm = 380;
+        if (nm > 780) nm = 780;
+        double r, g, b;
+        if (nm < 440)      { r = -(nm - 440) / 60; g = 0;          b = 1; }
+        else if (nm < 490) { r = 0;                   g = (nm - 440) / 50; b = 1; }
+        else if (nm < 510) { r = 0;                   g = 1;          b = -(nm - 510) / 20; }
+        else if (nm < 580) { r = (nm - 510) / 70;    g = 1;          b = 0; }
+        else if (nm < 645) { r = 1;                   g = -(nm - 645) / 65; b = 0; }
+        else               { r = 1;                   g = 0;          b = 0; }
+
+        double factor = 1.0;
+        if (nm < 420) factor = 0.3 + 0.7 * (nm - 380) / 40.0;
+        else if (nm > 700) factor = 0.3 + 0.7 * (780.0 - nm) / 80.0;
+        r *= factor; g *= factor; b *= factor;
+
+        return new SKColor(
+            (byte)Math.Clamp(255 * r, 0, 255),
+            (byte)Math.Clamp(255 * g, 0, 255),
+            (byte)Math.Clamp(255 * b, 0, 255));
+    }
+
+    private static void DrawGamuts(SKCanvas c, SKRect plot, Domain.Entities.MeasurementRun run)
+    {
+        var dashEffect = SKPathEffect.CreateDash(new float[] { 6, 4 }, 0);
+        for (int idx = 0; idx < run.GamutReports.Count; idx++)
+        {
+            var g = run.GamutReports[idx];
+            var color = GamutPalette[idx % GamutPalette.Length];
+            var measuredColor = new SKColor(
+                (byte)(color.Red * 7 / 10),
+                (byte)(color.Green * 7 / 10),
+                (byte)(color.Blue * 7 / 10));
+
+            DrawGamutTriangle(c, plot,
+                g.Target.Red, g.Target.Green, g.Target.Blue, g.Target.White,
+                new SKColor(color.Red, color.Green, color.Blue, 36),
+                color, 2.2f, false, null);
+
+            DrawGamutTriangle(c, plot,
+                g.MeasuredRed, g.MeasuredGreen, g.MeasuredBlue, g.MeasuredWhite,
+                SKColors.Transparent,
+                measuredColor, 1.8f, true, dashEffect);
+
+            if (IsFinite(g.MeasuredWhite.X) && IsFinite(g.MeasuredWhite.Y))
+            {
+                var wp = ToPixel(g.MeasuredWhite.X, g.MeasuredWhite.Y, plot);
+                using var dot = new SKPaint { Color = measuredColor, IsAntialias = true };
+                c.DrawCircle(wp, 3, dot);
+            }
+        }
+    }
+
+    private static void DrawGamutTriangle(SKCanvas c, SKRect plot,
         Domain.Entities.ChromaticityPoint r,
         Domain.Entities.ChromaticityPoint g,
         Domain.Entities.ChromaticityPoint b,
         Domain.Entities.ChromaticityPoint w,
-        SKColor fill, SKColor stroke, float strokeWidth, bool dashed, SKPathEffect? dashEffect = null)
+        SKColor fill, SKColor stroke, float strokeWidth, bool dashed, SKPathEffect? dashEffect)
     {
+        if (!IsFinite(r.X) || !IsFinite(r.Y) || !IsFinite(g.X) || !IsFinite(g.Y) ||
+            !IsFinite(b.X) || !IsFinite(b.Y))
+        {
+            return;
+        }
         using var path = new SKPath();
-        var rp = ToPixel(r.X, r.Y, plot);
-        var gp = ToPixel(g.X, g.Y, plot);
-        var bp = ToPixel(b.X, b.Y, plot);
-
-        path.MoveTo(rp);
-        path.LineTo(gp);
-        path.LineTo(bp);
+        path.MoveTo(ToPixel(r.X, r.Y, plot));
+        path.LineTo(ToPixel(g.X, g.Y, plot));
+        path.LineTo(ToPixel(b.X, b.Y, plot));
         path.Close();
 
         if (fill.Alpha > 0)
@@ -161,25 +233,28 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             using var fillPaint = new SKPaint { Color = fill, IsAntialias = true };
             c.DrawPath(path, fillPaint);
         }
-
         var strokePaint = new SKPaint
         {
-            Color = stroke,
-            IsStroke = true,
-            StrokeWidth = strokeWidth,
-            IsAntialias = true,
+            Color = stroke, IsStroke = true, StrokeWidth = strokeWidth, IsAntialias = true,
         };
         if (dashed && dashEffect is not null) strokePaint.PathEffect = dashEffect;
-        using (strokePaint)
-        {
-            c.DrawPath(path, strokePaint);
-        }
+        using (strokePaint) c.DrawPath(path, strokePaint);
 
-        var wp = ToPixel(w.X, w.Y, plot);
-        using (var dot = new SKPaint { Color = stroke, IsAntialias = true })
+        if (IsFinite(w.X) && IsFinite(w.Y))
         {
-            c.DrawCircle(wp, 2.5f, dot);
+            using var dot = new SKPaint { Color = stroke, IsAntialias = true };
+            c.DrawCircle(ToPixel(w.X, w.Y, plot), 2.5f, dot);
         }
+    }
+
+    private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
+
+    private static SKPoint ToPixel(double x, double y, SKRect plot)
+    {
+        const double maxX = 0.8, maxY = 0.9;
+        var px = (float)(plot.Left + (x / maxX) * plot.Width);
+        var py = (float)(plot.Top + (1 - y / maxY) * plot.Height);
+        return new SKPoint(px, py);
     }
 
     private static void DrawLegend(SKCanvas c, SKRect plot, Domain.Entities.MeasurementRun run)
@@ -222,7 +297,6 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
                 (byte)(color.Blue * 7 / 10));
             var yMid = blockY + padY + 28 + i * rowHeight;
 
-            // Target swatch (solid filled square in target color)
             using (var targetFill = new SKPaint { Color = new SKColor(color.Red, color.Green, color.Blue, 90), IsAntialias = true })
             using (var targetStroke = new SKPaint { Color = color, IsStroke = true, StrokeWidth = 1.5f, IsAntialias = true })
             {
@@ -230,13 +304,10 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
                 c.DrawRect(r, targetFill);
                 c.DrawRect(r, targetStroke);
             }
-            // Measured swatch (dashed outlined square in measured color)
             using (var measuredStroke = new SKPaint
             {
                 Color = measuredColor,
-                IsStroke = true,
-                StrokeWidth = 1.5f,
-                IsAntialias = true,
+                IsStroke = true, StrokeWidth = 1.5f, IsAntialias = true,
                 PathEffect = SKPathEffect.CreateDash(new float[] { 3, 2 }, 0),
             })
             {

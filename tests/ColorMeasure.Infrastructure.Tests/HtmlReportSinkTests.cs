@@ -56,6 +56,10 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("toggleGamut");
         html.Should().Contain("plantMarker");
         html.Should().Contain("showSampleDetail");
+        // Colored horseshoe fan + wavelength legend
+        html.Should().Contain("wavelengthToColor");
+        html.Should().Contain("horseshoe-fan");
+        html.Should().Contain("purple limit");
     }
 
     [Fact]
