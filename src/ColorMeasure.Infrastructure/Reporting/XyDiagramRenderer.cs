@@ -48,8 +48,15 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         var c = surface.Canvas;
         c.Clear(SKColors.White);
 
+        // Size the plot so 1 horizontal cell (0.1 in x) == 1 vertical cell (0.1 in y)
+        // — 8:9 aspect ratio matching chromaticity ranges [0,0.8] x [0,0.9].
         const float left = 40, right = 40, top = 30, bottom = 50;
-        var plot = SKRect.Create(left, top, width - left - right, height - top - bottom);
+        float availableH = height - top - bottom;
+        float cellPx = availableH / 9f;             // cell size from height (9 y-cells)
+        float plotW = cellPx * 8f;                  // 8 x-cells
+        float plotH = availableH;
+        float plotX = left + ((width - left - right) - plotW) / 2f; // center horizontally
+        var plot = SKRect.Create(plotX, top, plotW, plotH);
 
         DrawGrid(c, plot);
         DrawColoredHorseshoe(c, plot);

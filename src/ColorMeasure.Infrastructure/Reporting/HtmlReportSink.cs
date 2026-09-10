@@ -334,7 +334,16 @@ function toPixel(x, y, plot) {
 function buildDiagram() {
   const diagram = document.getElementById('diagram');
   diagram.innerHTML = '';
-  const plot = { x: 50, y: 30, width: 880, height: 640 };
+  // Plot is sized so 1 horizontal cell (0.1 in x) == 1 vertical cell (0.1 in y) on
+  // screen — 8:9 aspect ratio matching the chromaticity ranges [0,0.8] x [0,0.9].
+  // Otherwise x-cells would render ~1.55x wider than y-cells.
+  const CELL = 70;
+  const plot = {
+    x: Math.round((960 - 8 * CELL) / 2),
+    y: 30,
+    width: 8 * CELL,
+    height: 9 * CELL,
+  };
 
   // Grid: major gridlines at every 0.1 step on both axes, with axis tick marks
   // and labels at every 0.1 (x) / 0.1 (y) so users can read coordinates precisely.
