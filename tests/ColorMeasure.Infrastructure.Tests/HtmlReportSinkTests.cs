@@ -60,6 +60,9 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("wavelengthToColor");
         html.Should().Contain("horseshoe-fan");
         html.Should().Contain("purple limit");
+        // Per-gamut primary-channel linear gradient fill (R/G/B stops)
+        html.Should().Contain("linearGradient");
+        html.Should().Contain("grad-sRGB");
     }
 
     [Fact]

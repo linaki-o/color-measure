@@ -217,21 +217,51 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
                 (byte)(color.Green * 7 / 10),
                 (byte)(color.Blue * 7 / 10));
 
-            DrawGamutTriangle(c, plot,
-                g.Target.Red, g.Target.Green, g.Target.Blue, g.Target.White,
-                new SKColor(color.Red, color.Green, color.Blue, 36),
-                color, 2.2f, false, null);
+            // Primary-channel colors used by the R→B gradient fill: red at R,
+            // green at the projection of G onto the R-B edge, blue at B. This is
+            // the standard rtings / notebookcheck chromaticity-fill convention.
+            var rPx = ToPixel(g.Target.Red.X, g.Target.Red.Y, plot);
+            var gPx = ToPixel(g.Target.Green.X, g.Target.Green.Y, plot);
+            var bPx = ToPixel(g.Target.Blue.X, g.Target.Blue.Y, plot);
+
+            var dx = bPx.X - rPx.X;
+            var dy = bPx.Y - rPx.Y;
+            var lenSq = dx * dx + dy * dy;
+            var projG = lenSq > 0 ? (gPx.X - rPx.X) * dx + (gPx.Y - rPx.Y) * dy : 0;
+
+            var shader = SKShader.CreateLinearGradient(
+                rPx, bPx,
+                new SKColor[] { new(255, 34, 34), new(34, 204, 34), new(34, 68, 255) },
+                new float[] { 0f, (float)(projG / lenSq), 1f },
+                SKShaderTileMode.Clamp);
+
+            DrawGamutTriangle(c, plot, g.Target.Red, g.Target.Green, g.Target.Blue, g.Target.White,
+                SKColors.Transparent, color, 2.2f, false,
+                dashEffect: null, fillShader: shader, fillAlpha: 115);
 
             DrawGamutTriangle(c, plot,
                 g.MeasuredRed, g.MeasuredGreen, g.MeasuredBlue, g.MeasuredWhite,
                 SKColors.Transparent,
                 measuredColor, 1.8f, true, dashEffect);
 
+            // Primary vertex markers (R red / G green / B blue) on the target triangle.
+            var primaryColors = new SKColor[] { new(255, 34, 34), new(34, 204, 34), new(34, 68, 255) };
+            var primaryPoints = new[] { rPx, gPx, bPx };
+            for (int p = 0; p < 3; p++)
+            {
+                using var stroke = new SKPaint { Color = SKColors.White, IsStroke = true, StrokeWidth = 1.5f, IsAntialias = true };
+                c.DrawCircle(primaryPoints[p], 4.5f, new SKPaint { Color = primaryColors[p], IsAntialias = true });
+                c.DrawCircle(primaryPoints[p], 4.5f, stroke);
+            }
+
+            // Whichever white point is finite: small filled dot in the muted palette color.
             if (IsFinite(g.MeasuredWhite.X) && IsFinite(g.MeasuredWhite.Y))
             {
                 var wp = ToPixel(g.MeasuredWhite.X, g.MeasuredWhite.Y, plot);
-                using var dot = new SKPaint { Color = measuredColor, IsAntialias = true };
-                c.DrawCircle(wp, 3, dot);
+                using var dotFill = new SKPaint { Color = measuredColor, IsAntialias = true };
+                using var dotStroke = new SKPaint { Color = SKColors.White, IsStroke = true, StrokeWidth = 1f, IsAntialias = true };
+                c.DrawCircle(wp, 4f, dotFill);
+                c.DrawCircle(wp, 4f, dotStroke);
             }
         }
     }
@@ -241,7 +271,8 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         Domain.Entities.ChromaticityPoint g,
         Domain.Entities.ChromaticityPoint b,
         Domain.Entities.ChromaticityPoint w,
-        SKColor fill, SKColor stroke, float strokeWidth, bool dashed, SKPathEffect? dashEffect)
+        SKColor fill, SKColor stroke, float strokeWidth, bool dashed, SKPathEffect? dashEffect,
+        SKShader? fillShader = null, byte fillAlpha = 0)
     {
         if (!IsFinite(r.X) || !IsFinite(r.Y) || !IsFinite(g.X) || !IsFinite(g.Y) ||
             !IsFinite(b.X) || !IsFinite(b.Y))
@@ -254,7 +285,13 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         path.LineTo(ToPixel(b.X, b.Y, plot));
         path.Close();
 
-        if (fill.Alpha > 0)
+        // Either a flat alpha fill OR a shader-driven fill (the R/G/B gradient).
+        if (fillShader is not null)
+        {
+            using var fillPaint = new SKPaint { Shader = fillShader, IsAntialias = true, Color = new SKColor(0, 0, 0, fillAlpha) };
+            c.DrawPath(path, fillPaint);
+        }
+        else if (fill.Alpha > 0)
         {
             using var fillPaint = new SKPaint { Color = fill, IsAntialias = true };
             c.DrawPath(path, fillPaint);

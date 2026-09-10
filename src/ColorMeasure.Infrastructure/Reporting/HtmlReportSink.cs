@@ -374,25 +374,90 @@ function buildDiagram() {
   const xLabel = svg('text', { x: plot.x + plot.width - 50, y: plot.y + plot.height + 32, class: 'axis-label' }, diagram);
   xLabel.textContent = 'CIE 1931 x';
 
+  // Build <defs> with one linear gradient per gamut. Each gradient runs along the
+  // gamut's R→B edge with three stops at the projected positions of R, G, B
+  // (G's stop is computed by projecting G onto the R–B line). Colors are the
+  // primary channel colors. Result: each target triangle fills with the actual
+  // R/G/B color content of that color space — sRGB looks red/green/blue, P3
+  // looks slightly different, etc. This is how rtings / notebookcheck render
+  // chromaticity diagrams.
+  const defs = svg('defs', {}, diagram);
+  RUN.gamuts.forEach((g, i) => {
+    const grad = document.createElementNS(svgNS, 'linearGradient');
+    const id = `grad-${cssEscape(g.name)}`;
+    grad.setAttribute('id', id);
+    grad.setAttribute('gradientUnits', 'userSpaceOnUse');
+
+    const rPx = toPixel(g.target.r.x, g.target.r.y, plot);
+    const gPx = toPixel(g.target.g.x, g.target.g.y, plot);
+    const bPx = toPixel(g.target.b.x, g.target.b.y, plot);
+
+    // Gradient axis = R → B; G is encoded as a stop along this axis at its
+    // projection, giving a proper barycentric-ish fill (red toward R, green
+    // toward G, blue toward B) without a full mesh gradient.
+    const dx = bPx.x - rPx.x, dy = bPx.y - rPx.y;
+    const lenSq = dx * dx + dy * dy;
+    const projG = lenSq > 0 ? ((gPx.x - rPx.x) * dx + (gPx.y - rPx.y) * dy) / lenSq : 0.5;
+
+    grad.setAttribute('x1', rPx.x.toFixed(1));
+    grad.setAttribute('y1', rPx.y.toFixed(1));
+    grad.setAttribute('x2', bPx.x.toFixed(1));
+    grad.setAttribute('y2', bPx.y.toFixed(1));
+
+    const stops = [
+      { offset: 0,                              color: '#ff2222' },
+      { offset: Math.max(0.01, Math.min(0.99, projG)), color: '#22cc22' },
+      { offset: 1,                              color: '#2244ff' },
+    ];
+    for (const s of stops) {
+      const stop = document.createElementNS(svgNS, 'stop');
+      stop.setAttribute('offset', (s.offset * 100).toFixed(2) + '%');
+      stop.setAttribute('stop-color', s.color);
+      stop.setAttribute('stop-opacity', '0.45');
+      grad.appendChild(stop);
+    }
+    defs.appendChild(grad);
+  });
+
   // Gamuts: one group per target so we can toggle.
   RUN.gamuts.forEach((g, i) => {
     const color = palette[i % palette.length];
     const gGroup = svg('g', { 'data-target': g.name }, diagram);
 
-    const targetFill = withAlpha(color, 0.18);
     const measuredColor = darken(color, 0.3);
     const targetPts = [g.target.r, g.target.g, g.target.b].map(p => toPixel(p.x, p.y, plot));
     const measuredPts = [g.measured.r, g.measured.g, g.measured.b].map(p => toPixel(p.x, p.y, plot));
 
-    const targetTri = svg('polygon', { fill: targetFill, stroke: color, 'stroke-width': 2.2 }, gGroup);
+    // Target triangle: fill with the R/G/B primary gradient for that gamut; outline
+    // keeps the palette stroke so the legend can still identify which is which.
+    const targetTri = svg('polygon', {
+      fill: `url(#grad-${cssEscape(g.name)})`,
+      stroke: color, 'stroke-width': 2.2, opacity: '0.85',
+    }, gGroup);
     targetTri.setAttribute('points', targetPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
 
-    const measuredTri = svg('polygon', { fill: 'none', stroke: measuredColor, 'stroke-width': 1.8, 'stroke-dasharray': '6,4' }, gGroup);
+    // Measured triangle: dashed outline in the palette-muted color, no fill.
+    const measuredTri = svg('polygon', {
+      fill: 'none', stroke: measuredColor, 'stroke-width': 1.8, 'stroke-dasharray': '6,4',
+    }, gGroup);
     measuredTri.setAttribute('points', measuredPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
 
-    // White point dot
-    const wp = toPixel(g.measured.w.x, g.measured.w.y, plot);
-    svg('circle', { cx: wp.x, cy: wp.y, r: 4, fill: measuredColor }, gGroup);
+    // Primary vertex markers (R red / G green / B blue) on the target triangle, so
+    // "where is this gamut's red primary" is answerable at a glance.
+    const primaryColors = ['#ff2222', '#22cc22', '#2244ff'];
+    [g.target.r, g.target.g, g.target.b].forEach((pt, j) => {
+      const px = toPixel(pt.x, pt.y, plot);
+      svg('circle', {
+        cx: px.x, cy: px.y, r: 4.5,
+        fill: primaryColors[j], stroke: '#fff', 'stroke-width': 1.5,
+      }, gGroup);
+    });
+
+    // Whichever white point is finite: small dot.
+    if (Number.isFinite(g.measured.w.x) && Number.isFinite(g.measured.w.y)) {
+      const wp = toPixel(g.measured.w.x, g.measured.w.y, plot);
+      svg('circle', { cx: wp.x, cy: wp.y, r: 4, fill: measuredColor, stroke: '#fff', 'stroke-width': 1 }, gGroup);
+    }
   });
 
   // Border
