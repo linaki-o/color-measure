@@ -366,63 +366,68 @@ function buildDiagram() {
   // the strip fill + the outline on top.
   const points = locus.map(p => toPixel(p[0], p[1], plot));
 
-  // Strip-fill the horseshoe interior: for each consecutive pair of locus points
-  // P[i], P[i+1], draw a quadrilateral P[i] -> P[i+1] -> Q[i+1] -> Q[i] where Q[i]
-  // is the corresponding point on the line of purples at the same parameter t.
-  // This puts each wavelength color at its actual position on the spectrum
-  // (red/orange on the right edge, yellow/green at the top, cyan/blue on the
-  // left, purple along the line of purples), rather than radiating from D65.
-  const fanGroup = svg('g', { id: 'horseshoe-fan' }, diagram);
-  const startP = points[0];
-  const endP   = points[points.length - 1];
-  const lastReal = points.length - 2; // skip the purple-limit point when pairing
+  // Rainbow-rim horseshoe: render the spectral locus as a thick colored band
+  // (~5% of plot width), with the interior left transparent so the background
+  // shows through. This is the standard CIE 1931 diagram convention used by
+  // Bruce Lindbloom, Wyszecki & Stiles, and the ITU-R BT.709/2020 references —
+  // the locus is the BOUNDARY of the visible color set, so only its boundary
+  // gets colored; inside is "achievable by mixing any combination of spectrum".
+  const rimWidth = Math.max(8, plot.width * 0.012);
+  const lastReal = points.length - 2;
+  // Centroid of real locus (excluding purple limit) — used as the inward target
+  // so the rim points toward the middle of the horseshoe.
+  let cx = 0, cy = 0;
+  for (let i = 0; i <= lastReal; i++) { cx += points[i].x; cy += points[i].y; }
+  cx /= (lastReal + 1); cy /= (lastReal + 1);
+
+  const rimGroup = svg('g', { id: 'horseshoe-rim' }, diagram);
+  const rimPts = [];
+  for (let i = 0; i <= lastReal; i++) {
+    const dx = cx - points[i].x, dy = cy - points[i].y;
+    const len = Math.hypot(dx, dy) || 1;
+    rimPts.push({ x: points[i].x + (dx / len) * rimWidth,
+                  y: points[i].y + (dy / len) * rimWidth });
+  }
   for (let i = 0; i < lastReal; i++) {
-    const t1 = i / lastReal;
-    const t2 = (i + 1) / lastReal;
-    const q1 = {
-      x: startP.x + (endP.x - startP.x) * t1,
-      y: startP.y + (endP.y - startP.y) * t1,
-    };
-    const q2 = {
-      x: startP.x + (endP.x - startP.x) * t2,
-      y: startP.y + (endP.y - startP.y) * t2,
-    };
     const fill = wavelengthToColor((locus[i][2] + locus[i + 1][2]) / 2);
     const quad = document.createElementNS(svgNS, 'polygon');
     quad.setAttribute('points',
       `${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ` +
       `${points[i+1].x.toFixed(1)},${points[i+1].y.toFixed(1)} ` +
-      `${q2.x.toFixed(1)},${q2.y.toFixed(1)} ` +
-      `${q1.x.toFixed(1)},${q1.y.toFixed(1)}`);
+      `${rimPts[i+1].x.toFixed(1)},${rimPts[i+1].y.toFixed(1)} ` +
+      `${rimPts[i].x.toFixed(1)},${rimPts[i].y.toFixed(1)}`);
     quad.setAttribute('fill', fill);
     quad.setAttribute('stroke', 'none');
-    fanGroup.appendChild(quad);
+    rimGroup.appendChild(quad);
   }
-
-  // Closing purple-limit wedge: from last real locus point (770nm) to the purple
-  // limit, down to its line-of-purples anchor. Gives the bottom-right corner
-  // a synthetic purple-ish fill that matches the spectrum's "non-spectral" zone.
+  // Closing purple-limit corner: a small purple wedge from the last real locus
+  // point (770nm) toward the purple limit and back, so the bottom-right corner
+  // reads as "synthetic / non-spectral" rather than leaving a hard color edge.
   {
-    const purpleReal = points[lastReal];              // (0.6042, 0.3965) at 770nm
-    const purpleLimit = endP;                         // (0.7347, 0.2653)
-    const purpleQ = {
-      x: startP.x + (endP.x - startP.x) * 1,
-      y: startP.y + (endP.y - startP.y) * 1,
-    };
+    const endP = points[lastReal];
+    const limitP = points[points.length - 1];
+    const dx = cx - endP.x, dy = cy - endP.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const endRim = { x: endP.x + (dx / len) * rimWidth, y: endP.y + (dy / len) * rimWidth };
+    const dx2 = cx - limitP.x, dy2 = cy - limitP.y;
+    const len2 = Math.hypot(dx2, dy2) || 1;
+    const limitRim = { x: limitP.x + (dx2 / len2) * rimWidth, y: limitP.y + (dy2 / len2) * rimWidth };
     const quad = document.createElementNS(svgNS, 'polygon');
     quad.setAttribute('points',
-      `${purpleReal.x.toFixed(1)},${purpleReal.y.toFixed(1)} ` +
-      `${purpleLimit.x.toFixed(1)},${purpleLimit.y.toFixed(1)} ` +
-      `${purpleQ.x.toFixed(1)},${purpleQ.y.toFixed(1)} ` +
-      `${purpleQ.x.toFixed(1)},${purpleQ.y.toFixed(1)}`);
+      `${endP.x.toFixed(1)},${endP.y.toFixed(1)} ` +
+      `${limitP.x.toFixed(1)},${limitP.y.toFixed(1)} ` +
+      `${limitRim.x.toFixed(1)},${limitRim.y.toFixed(1)} ` +
+      `${endRim.x.toFixed(1)},${endRim.y.toFixed(1)}`);
     quad.setAttribute('fill', '#780082');
     quad.setAttribute('stroke', 'none');
-    fanGroup.appendChild(quad);
+    rimGroup.appendChild(quad);
   }
 
-  // Line of purples: dashed gray edge from 380nm (locus[0]) to purple limit (locus[last]).
+  // Line of purples: closed boundary of the visible spectrum. Render it as a
+  // short purple-magenta line on the dashed gray line, with its own colored
+  // band so the "non-spectral" zone is unmistakable.
   svg('line', { x1: points[0].x, y1: points[0].y, x2: points[points.length-1].x, y2: points[points.length-1].y,
-    stroke: '#222', 'stroke-width': 1, 'stroke-dasharray': '5,3' }, diagram);
+    stroke: '#5a2a6e', 'stroke-width': 2 }, diagram);
 
   // Smooth spectral-locus outline: Catmull-Rom → quadratic Bezier through midpoints.
   // Pass a C1 curve through every consecutive midpoint using each original vertex

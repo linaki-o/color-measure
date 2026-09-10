@@ -56,9 +56,9 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("toggleGamut");
         html.Should().Contain("plantMarker");
         html.Should().Contain("showSampleDetail");
-        // Colored horseshoe fan + wavelength legend
+        // Colored horseshoe rim + wavelength legend
         html.Should().Contain("wavelengthToColor");
-        html.Should().Contain("horseshoe-fan");
+        html.Should().Contain("horseshoe-rim");
         html.Should().Contain("purple limit");
         // Per-gamut primary-channel linear gradient fill (R/G/B stops).
         // Source is JS template literals, not rendered SVG, so we check the

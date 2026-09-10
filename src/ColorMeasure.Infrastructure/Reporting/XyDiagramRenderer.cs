@@ -103,56 +103,66 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         for (int i = 0; i < Locus.Length; i++)
             pixels[i] = ToPixel(Locus[i].X, Locus[i].Y, plot);
 
-        // Strip-fill the horseshoe interior: each consecutive pair of locus points
-        // P[i], P[i+1] is closed into a quad by Q[i], Q[i+1] on the line of purples
-        // (line from 380nm endpoint to purple limit), filled with the segment's
-        // wavelength color. This puts each color at its actual position on the
-        // spectrum curve instead of radiating from D65 (which would smear colors
-        // across the entire diagram and lose positional meaning).
-        using var paint = new SKPaint { IsAntialias = true, Color = SKColors.White };
-        var startP = pixels[0];
-        var endP   = pixels[^1];
-        var lastReal = pixels.Length - 2;
+        // Rainbow-rim horseshoe: render the spectral locus as a thick colored band
+        // (~5% of plot width), with the interior left transparent so the background
+        // shows through. Standard CIE 1931 diagram convention — only the boundary of
+        // the visible color set gets colored; the interior stays white.
+        float rimWidth = Math.Max(8f, plot.Width * 0.012f);
+        int lastReal = pixels.Length - 2;
 
+        float cx = 0, cy = 0;
+        for (int i = 0; i <= lastReal; i++) { cx += pixels[i].X; cy += pixels[i].Y; }
+        cx /= (lastReal + 1); cy /= (lastReal + 1);
+
+        var rimPts = new SKPoint[lastReal + 1];
+        for (int i = 0; i <= lastReal; i++)
+        {
+            float dx = cx - pixels[i].X, dy = cy - pixels[i].Y;
+            float len = MathF.Sqrt(dx * dx + dy * dy);
+            if (len == 0) len = 1;
+            rimPts[i] = new SKPoint(pixels[i].X + (dx / len) * rimWidth,
+                                     pixels[i].Y + (dy / len) * rimWidth);
+        }
+
+        using var paint = new SKPaint { IsAntialias = true };
         for (int i = 0; i < lastReal; i++)
         {
-            float t1 = (float)i / lastReal;
-            float t2 = (float)(i + 1) / lastReal;
-            var q1 = new SKPoint(startP.X + (endP.X - startP.X) * t1,
-                                 startP.Y + (endP.Y - startP.Y) * t1);
-            var q2 = new SKPoint(startP.X + (endP.X - startP.X) * t2,
-                                 startP.Y + (endP.Y - startP.Y) * t2);
-
             paint.Color = WavelengthToColor((Locus[i].Nm + Locus[i + 1].Nm) / 2.0);
             using var path = new SKPath();
             path.MoveTo(pixels[i]);
             path.LineTo(pixels[i + 1]);
-            path.LineTo(q2);
-            path.LineTo(q1);
+            path.LineTo(rimPts[i + 1]);
+            path.LineTo(rimPts[i]);
             path.Close();
             c.DrawPath(path, paint);
         }
 
-        // Closing purple-limit wedge (770nm → purple limit → line-of-purples anchor):
-        // synthetic dark purple so the bottom-right "non-spectral" zone reads as
-        // a non-realizable boundary rather than a hard color jump.
+        // Closing purple-limit corner.
         {
+            var endP = pixels[lastReal];
+            var limitP = pixels[pixels.Length - 1];
+            float dx = cx - endP.X, dy = cy - endP.Y;
+            float len = MathF.Sqrt(dx * dx + dy * dy); if (len == 0) len = 1;
+            var endRim = new SKPoint(endP.X + (dx / len) * rimWidth, endP.Y + (dy / len) * rimWidth);
+            float dx2 = cx - limitP.X, dy2 = cy - limitP.Y;
+            float len2 = MathF.Sqrt(dx2 * dx2 + dy2 * dy2); if (len2 == 0) len2 = 1;
+            var limitRim = new SKPoint(limitP.X + (dx2 / len2) * rimWidth, limitP.Y + (dy2 / len2) * rimWidth);
             paint.Color = new SKColor(120, 0, 130);
-            var purpleQ = endP;
             using var path = new SKPath();
-            path.MoveTo(pixels[lastReal]);
-            path.LineTo(endP);
-            path.LineTo(purpleQ);
+            path.MoveTo(endP);
+            path.LineTo(limitP);
+            path.LineTo(limitRim);
+            path.LineTo(endRim);
             path.Close();
             c.DrawPath(path, paint);
         }
 
-        // Dashed line of purples on top of the fill (for visual definition).
-        using (var dashEffect = SKPathEffect.CreateDash(new float[] { 5, 3 }, 0))
+        // Line of purples: solid purple-magenta stroke from 380nm endpoint to
+        // purple limit. Marks the closed boundary of the visible color set.
         using (var lopStroke = new SKPaint
         {
-            Color = new SKColor(60, 60, 60, 220),
-            IsStroke = true, StrokeWidth = 1f, IsAntialias = true, PathEffect = dashEffect,
+            Color = new SKColor(90, 42, 110),
+            IsStroke = true, StrokeWidth = 2f, IsAntialias = true,
         })
         {
             c.DrawLine(pixels[0], pixels[^1], lopStroke);
