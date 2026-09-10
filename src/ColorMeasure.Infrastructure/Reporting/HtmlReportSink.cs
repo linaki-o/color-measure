@@ -21,6 +21,8 @@ public sealed class HtmlReportSink : IReportSink
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     public Task WriteAsync(MeasurementRun run, string outputDirectory, CancellationToken ct)
@@ -43,26 +45,34 @@ public sealed class HtmlReportSink : IReportSink
             samples = run.Samples.Select(s => new SampleData
             {
                 id = s.PatchId,
-                x = s.Chromaticity.X,
-                y = s.Chromaticity.Y,
-                lv = s.Lv,
-                triX = s.X,
-                triY = s.Y,
-                triZ = s.Z,
-                duv = s.DuV,
-                tcp = s.Tcp,
+                x = San(s.Chromaticity.X),
+                y = San(s.Chromaticity.Y),
+                lv = San(s.Lv),
+                triX = San(s.X),
+                triY = San(s.Y),
+                triZ = San(s.Z),
+                duv = San(s.DuV),
+                tcp = San(s.Tcp),
                 measuredAt = s.MeasuredAt.UtcDateTime.ToString("HH:mm:ss"),
             }).ToList(),
             gamuts = run.GamutReports.Select(g => new GamutData
             {
                 name = g.Target.Name,
-                coverage = g.CoverageRatio,
-                whiteDeltaUv = g.WhiteDeltaUv,
-                maxDeltaE2000 = g.MaxPrimaryDeltaE2000,
+                coverage = San(g.CoverageRatio),
+                whiteDeltaUv = San(g.WhiteDeltaUv),
+                maxDeltaE2000 = San(g.MaxPrimaryDeltaE2000),
                 passed = g.Passed,
-                primaryDeltaEs = g.PrimaryDeltaEs.Select(p => new PrimaryDelta { channel = p.Channel, dE = p.DeltaE2000 }).ToList(),
-                target = new TrianglePoints { r = Pt(g.Target.Red), g = Pt(g.Target.Green), b = Pt(g.Target.Blue), w = Pt(g.Target.White) },
-                measured = new TrianglePoints { r = Pt(g.MeasuredRed), g = Pt(g.MeasuredGreen), b = Pt(g.MeasuredBlue), w = Pt(g.MeasuredWhite) },
+                primaryDeltaEs = g.PrimaryDeltaEs.Select(p => new PrimaryDelta { channel = p.Channel, dE = San(p.DeltaE2000) }).ToList(),
+                target = new TrianglePoints
+                {
+                    r = Pt(g.Target.Red), g = Pt(g.Target.Green),
+                    b = Pt(g.Target.Blue), w = Pt(g.Target.White),
+                },
+                measured = new TrianglePoints
+                {
+                    r = Pt(g.MeasuredRed), g = Pt(g.MeasuredGreen),
+                    b = Pt(g.MeasuredBlue), w = Pt(g.MeasuredWhite),
+                },
             }).ToList(),
         };
         var json = JsonSerializer.Serialize(data, JsonOpts);
@@ -370,7 +380,7 @@ function buildToolbar(plot) {
     btn.style.setProperty('--c', color);
     btn.dataset.target = g.name;
     btn.innerHTML = `<span class="dot"></span><b>${g.name}</b>`
-      + `<span class="cov">cov ${(g.coverage*100).toFixed(1)}%</span>`
+      + `<span class="cov">cov ${g.coverage == null ? '—' : (g.coverage*100).toFixed(1) + '%'}</span>`
       + `<span class="vbadge ${g.passed ? 'pass' : 'fail'}">${g.passed ? 'PASS' : 'FAIL'}</span>`;
     btn.addEventListener('click', () => toggleGamut(g.name, btn));
     toolbar.appendChild(btn);
@@ -395,12 +405,12 @@ function buildGamutTable() {
   }
   RUN.gamuts.forEach((g, i) => {
     const color = palette[i % palette.length];
-    const find = ch => (g.primaryDeltaEs.find(p => p.channel === ch) || { dE: 0 }).dE;
+    const find = ch => (g.primaryDeltaEs.find(p => p.channel === ch) || { dE: null }).dE;
     const tr = document.createElement('tr');
     tr.dataset.target = g.name;
     tr.innerHTML =
       `<td><span class="patch-chip" style="background:${color}"></span><b>${g.name}</b></td>`
-      + `<td>${(g.coverage*100).toFixed(1)}%</td>`
+      + `<td>${g.coverage == null ? '—' : (g.coverage*100).toFixed(1) + '%'}</td>`
       + `<td>${num(g.whiteDeltaUv)}</td>`
       + `<td>${num(g.maxDeltaE2000)}</td>`
       + `<td>${num(find('R'))}</td>`
@@ -500,6 +510,13 @@ function num(v, digits = 4) {
 
     private static XYPoint Pt(ChromaticityPoint p) => new() { x = p.X, y = p.Y };
 
+    /// <summary>
+    /// Sanitize a non-finite value to <c>null</c> so the JSON stays valid. Non-finite values
+    /// come from degenerate inputs (e.g. zero-sum XYZ → NaN xy, or division by zero in ΔE2000
+    /// that produces ±Infinity). The HTML page renders these as <c>—</c>.
+    /// </summary>
+    private static double? San(double v) => double.IsFinite(v) ? v : null;
+
     private static string HtmlEncode(string s) => System.Net.WebUtility.HtmlEncode(s);
 
     public sealed class ReportData
@@ -515,23 +532,23 @@ function num(v, digits = 4) {
     public sealed class SampleData
     {
         public string id { get; set; } = "";
-        public double x { get; set; }
-        public double y { get; set; }
-        public double lv { get; set; }
-        public double triX { get; set; }
-        public double triY { get; set; }
-        public double triZ { get; set; }
-        public double duv { get; set; }
-        public double tcp { get; set; }
+        public double? x { get; set; }
+        public double? y { get; set; }
+        public double? lv { get; set; }
+        public double? triX { get; set; }
+        public double? triY { get; set; }
+        public double? triZ { get; set; }
+        public double? duv { get; set; }
+        public double? tcp { get; set; }
         public string measuredAt { get; set; } = "";
     }
 
     public sealed class GamutData
     {
         public string name { get; set; } = "";
-        public double coverage { get; set; }
-        public double whiteDeltaUv { get; set; }
-        public double maxDeltaE2000 { get; set; }
+        public double? coverage { get; set; }
+        public double? whiteDeltaUv { get; set; }
+        public double? maxDeltaE2000 { get; set; }
         public bool passed { get; set; }
         public List<PrimaryDelta> primaryDeltaEs { get; set; } = new();
         public TrianglePoints target { get; set; } = new();
@@ -541,7 +558,7 @@ function num(v, digits = 4) {
     public sealed class PrimaryDelta
     {
         public string channel { get; set; } = "";
-        public double dE { get; set; }
+        public double? dE { get; set; }
     }
 
     public sealed class TrianglePoints
@@ -554,7 +571,7 @@ function num(v, digits = 4) {
 
     public sealed class XYPoint
     {
-        public double x { get; set; }
-        public double y { get; set; }
+        public double? x { get; set; }
+        public double? y { get; set; }
     }
 }

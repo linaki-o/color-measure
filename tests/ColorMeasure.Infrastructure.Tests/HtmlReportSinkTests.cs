@@ -76,4 +76,50 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("Empty");
         html.Should().Contain("没有采集到任何样本");
     }
+
+    [Fact]
+    public async Task SerializesNonFiniteValuesAsNull_NotLiteralNaN()
+    {
+        // Degenerate sample: zero-sum XYZ produces NaN xy; degenerate dE2000 produces Infinity.
+        var samples = new[]
+        {
+            new ColorSample("white", new ChromaticityPoint(double.NaN, double.NaN),
+                double.PositiveInfinity, 0, 0, 0,
+                double.NaN, double.PositiveInfinity, "TEST-SN", DateTimeOffset.UtcNow),
+            new ColorSample("red",   new ChromaticityPoint(double.NaN, double.NaN),
+                0, 0, 0, 0,
+                double.NaN, double.NaN, "TEST-SN", DateTimeOffset.UtcNow),
+        };
+        var report = new GamutReport(
+            Target: ColorSpaceCatalog.Srgb,
+            MeasuredRed: new ChromaticityPoint(double.NaN, double.NaN),
+            MeasuredGreen: new ChromaticityPoint(double.NaN, double.NaN),
+            MeasuredBlue: new ChromaticityPoint(double.NaN, double.NaN),
+            MeasuredWhite: new ChromaticityPoint(double.NaN, double.NaN),
+            CoverageRatio: double.PositiveInfinity,
+            WhiteDeltaUv: double.NaN,
+            MaxPrimaryDeltaE2000: double.PositiveInfinity,
+            Passed: false,
+            PrimaryDeltaEs: new[] { new DeltaEPoint("R", double.PositiveInfinity) });
+
+        var run = new MeasurementRun(
+            PlanName: "Degenerate",
+            StartedAt: DateTimeOffset.UtcNow,
+            FinishedAt: DateTimeOffset.UtcNow,
+            ProbeSerialNo: "TEST-SN",
+            Samples: samples,
+            GamutReports: new[] { report });
+
+        var sink = new HtmlReportSink();
+        await sink.WriteAsync(run, _dir, CancellationToken.None);
+
+        var html = await File.ReadAllTextAsync(Path.Combine(_dir, "report.html"));
+        // The fatal cases: the JSON payload must not contain bare NaN/Infinity literals that
+        // would cause browsers to throw "Unexpected token N in JSON".
+        html.Should().NotContain(": NaN");
+        html.Should().NotContain(": Infinity");
+        html.Should().NotContain(": -Infinity");
+        // Sanitizer should keep finite numbers intact and finite sample id.
+        html.Should().Contain("\"id\":\"white\"");
+    }
 }
