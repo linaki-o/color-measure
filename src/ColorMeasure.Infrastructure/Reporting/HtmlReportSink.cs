@@ -336,7 +336,8 @@ function buildDiagram() {
   diagram.innerHTML = '';
   const plot = { x: 50, y: 30, width: 880, height: 640 };
 
-  // Grid
+  // Grid: major gridlines at every 0.1 step on both axes, with axis tick marks
+  // and labels at every 0.1 (x) / 0.1 (y) so users can read coordinates precisely.
   const grid = svg('g', { stroke: '#e6e6e6', 'stroke-width': 1 }, diagram);
   for (let x = 0; x <= 0.8 + 1e-9; x += 0.1) {
     const p = toPixel(x, 0, plot);
@@ -466,14 +467,30 @@ function buildDiagram() {
     t.textContent = `${nm}`;
   }
 
-  // Axis labels
-  [0, 0.4, 0.8].forEach(x => {
-    const p = toPixel(x, 0, plot);
-    const t = svg('text', { x: p.x, y: plot.y + plot.height + 16, 'text-anchor': 'middle', class: 'axis-label' }, diagram);
-    t.textContent = x.toFixed(1);
-  });
-  const xLabel = svg('text', { x: plot.x + plot.width - 50, y: plot.y + plot.height + 32, class: 'axis-label' }, diagram);
+  // Axis tick marks + labels at every 0.1 step on both axes (0.0–0.8 for x, 0.0–0.9 for y).
+  // Tick marks are short outward strokes on the plot border; labels sit just outside.
+  for (let xv = 0; xv <= 0.8 + 1e-9; xv += 0.1) {
+    const p = toPixel(xv, 0, plot);
+    svg('line', { x1: p.x, y1: plot.y + plot.height, x2: p.x, y2: plot.y + plot.height + 5,
+                  stroke: '#333', 'stroke-width': 1 }, diagram);
+    const t = svg('text', { x: p.x, y: plot.y + plot.height + 18, 'text-anchor': 'middle',
+                            'font-size': 10, fill: '#333' }, diagram);
+    t.textContent = xv.toFixed(1);
+  }
+  for (let yv = 0; yv <= 0.9 + 1e-9; yv += 0.1) {
+    const p = toPixel(0, yv, plot);
+    svg('line', { x1: plot.x - 5, y1: p.y, x2: plot.x, y2: p.y,
+                  stroke: '#333', 'stroke-width': 1 }, diagram);
+    const t = svg('text', { x: plot.x - 8, y: p.y + 3, 'text-anchor': 'end',
+                            'font-size': 10, fill: '#333' }, diagram);
+    t.textContent = yv.toFixed(1);
+  }
+  const xLabel = svg('text', { x: plot.x + plot.width - 50, y: plot.y + plot.height + 34,
+                              'font-size': 11, fill: '#333' }, diagram);
   xLabel.textContent = 'CIE 1931 x';
+  const yLabel = svg('text', { x: plot.x - 32, y: plot.y + 12,
+                              'font-size': 11, fill: '#333' }, diagram);
+  yLabel.textContent = 'CIE 1931 y';
 
   // Build <defs> with one linear gradient per gamut. Each gradient runs along the
   // gamut's R→B edge with three stops at the projected positions of R, G, B

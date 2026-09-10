@@ -54,19 +54,12 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         DrawGrid(c, plot);
         DrawColoredHorseshoe(c, plot);
         DrawGamuts(c, plot, run);
+        DrawAxisTicks(c, plot);
         DrawLegend(c, plot, run);
 
         using (var border = new SKPaint { Color = SKColors.Black, IsStroke = true, StrokeWidth = 1 })
         {
             c.DrawRect(plot, border);
-        }
-        using var txtFont = new SKFont(SKTypeface.Default, 11);
-        using (var txt = new SKPaint { Color = SKColors.Black, IsAntialias = true })
-        {
-            c.DrawText("0.0", plot.Left - 18, plot.Bottom + 14, SKTextAlign.Left, txtFont, txt);
-            c.DrawText("0.4", plot.Left + plot.Width / 2 - 8, plot.Bottom + 14, SKTextAlign.Left, txtFont, txt);
-            c.DrawText("0.8", plot.Right - 14, plot.Bottom + 14, SKTextAlign.Left, txtFont, txt);
-            c.DrawText("CIE 1931 x", plot.Right - 60, plot.Bottom + 32, SKTextAlign.Left, txtFont, txt);
         }
 
         using var img = surface.Snapshot();
@@ -87,6 +80,32 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             var py = (float)(plot.Top + (1 - y / 0.9) * plot.Height);
             c.DrawLine(plot.Left, py, plot.Right, py, grid);
         }
+    }
+
+    /// <summary>
+    /// Axis tick marks + labels at every 0.1 step on both axes, plus axis-name labels.
+    /// </summary>
+    private static void DrawAxisTicks(SKCanvas c, SKRect plot)
+    {
+        using var tickPaint = new SKPaint { Color = new SKColor(50, 50, 50), StrokeWidth = 1f, IsStroke = true, IsAntialias = true };
+        using var labelFont = new SKFont(SKTypeface.Default, 10);
+        using var labelPaint = new SKPaint { Color = new SKColor(50, 50, 50), IsAntialias = true };
+        using var nameFont = new SKFont(SKTypeface.Default, 11);
+
+        for (double xv = 0; xv <= 0.8 + 1e-9; xv += 0.1)
+        {
+            var px = (float)(plot.Left + xv / 0.8 * plot.Width);
+            c.DrawLine(px, plot.Bottom, px, plot.Bottom + 5, tickPaint);
+            c.DrawText(xv.ToString("0.0"), px, plot.Bottom + 18, SKTextAlign.Center, labelFont, labelPaint);
+        }
+        for (double yv = 0; yv <= 0.9 + 1e-9; yv += 0.1)
+        {
+            var py = (float)(plot.Top + (1 - yv / 0.9) * plot.Height);
+            c.DrawLine(plot.Left - 5, py, plot.Left, py, tickPaint);
+            c.DrawText(yv.ToString("0.0"), plot.Left - 8, py + 3, SKTextAlign.Right, labelFont, labelPaint);
+        }
+        c.DrawText("CIE 1931 x", plot.Right - 60, plot.Bottom + 34, SKTextAlign.Left, nameFont, labelPaint);
+        c.DrawText("CIE 1931 y", plot.Left - 40, plot.Top + 12, SKTextAlign.Left, nameFont, labelPaint);
     }
 
     /// <summary>
