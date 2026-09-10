@@ -363,27 +363,61 @@ function buildDiagram() {
   ];
 
   // Pre-compute pixel positions and the smooth-path 'd' string once; reuse for
-  // fan fill + the outline on top.
+  // the strip fill + the outline on top.
   const points = locus.map(p => toPixel(p[0], p[1], plot));
 
-  // Fan wedges meeting at midpoints → the colored fill has a C1 outer boundary.
-  // Fill is translucent so target gamut triangles drawn on top remain visible.
-  const wp0 = toPixel(0.3127, 0.3290, plot);
+  // Strip-fill the horseshoe interior: for each consecutive pair of locus points
+  // P[i], P[i+1], draw a quadrilateral P[i] -> P[i+1] -> Q[i+1] -> Q[i] where Q[i]
+  // is the corresponding point on the line of purples at the same parameter t.
+  // This puts each wavelength color at its actual position on the spectrum
+  // (red/orange on the right edge, yellow/green at the top, cyan/blue on the
+  // left, purple along the line of purples), rather than radiating from D65.
   const fanGroup = svg('g', { id: 'horseshoe-fan' }, diagram);
-  for (let i = 0; i < locus.length - 1; i++) {
-    const w2 = locus[i + 1][2];
-    const fill = w2 === 0 ? '#780082' : wavelengthToColor((locus[i][2] + w2) / 2);
-    const mx = (points[i].x + points[i + 1].x) / 2;
-    const my = (points[i].y + points[i + 1].y) / 2;
-    const tri = document.createElementNS(svgNS, 'polygon');
-    tri.setAttribute('points',
-      `${wp0.x.toFixed(1)},${wp0.y.toFixed(1)} ` +
+  const startP = points[0];
+  const endP   = points[points.length - 1];
+  const lastReal = points.length - 2; // skip the purple-limit point when pairing
+  for (let i = 0; i < lastReal; i++) {
+    const t1 = i / lastReal;
+    const t2 = (i + 1) / lastReal;
+    const q1 = {
+      x: startP.x + (endP.x - startP.x) * t1,
+      y: startP.y + (endP.y - startP.y) * t1,
+    };
+    const q2 = {
+      x: startP.x + (endP.x - startP.x) * t2,
+      y: startP.y + (endP.y - startP.y) * t2,
+    };
+    const fill = wavelengthToColor((locus[i][2] + locus[i + 1][2]) / 2);
+    const quad = document.createElementNS(svgNS, 'polygon');
+    quad.setAttribute('points',
       `${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ` +
-      `${mx.toFixed(1)},${my.toFixed(1)}`);
-    tri.setAttribute('fill', fill);
-    tri.setAttribute('fill-opacity', '0.55');
-    tri.setAttribute('stroke', 'none');
-    fanGroup.appendChild(tri);
+      `${points[i+1].x.toFixed(1)},${points[i+1].y.toFixed(1)} ` +
+      `${q2.x.toFixed(1)},${q2.y.toFixed(1)} ` +
+      `${q1.x.toFixed(1)},${q1.y.toFixed(1)}`);
+    quad.setAttribute('fill', fill);
+    quad.setAttribute('stroke', 'none');
+    fanGroup.appendChild(quad);
+  }
+
+  // Closing purple-limit wedge: from last real locus point (770nm) to the purple
+  // limit, down to its line-of-purples anchor. Gives the bottom-right corner
+  // a synthetic purple-ish fill that matches the spectrum's "non-spectral" zone.
+  {
+    const purpleReal = points[lastReal];              // (0.6042, 0.3965) at 770nm
+    const purpleLimit = endP;                         // (0.7347, 0.2653)
+    const purpleQ = {
+      x: startP.x + (endP.x - startP.x) * 1,
+      y: startP.y + (endP.y - startP.y) * 1,
+    };
+    const quad = document.createElementNS(svgNS, 'polygon');
+    quad.setAttribute('points',
+      `${purpleReal.x.toFixed(1)},${purpleReal.y.toFixed(1)} ` +
+      `${purpleLimit.x.toFixed(1)},${purpleLimit.y.toFixed(1)} ` +
+      `${purpleQ.x.toFixed(1)},${purpleQ.y.toFixed(1)} ` +
+      `${purpleQ.x.toFixed(1)},${purpleQ.y.toFixed(1)}`);
+    quad.setAttribute('fill', '#780082');
+    quad.setAttribute('stroke', 'none');
+    fanGroup.appendChild(quad);
   }
 
   // Line of purples: dashed gray edge from 380nm (locus[0]) to purple limit (locus[last]).
