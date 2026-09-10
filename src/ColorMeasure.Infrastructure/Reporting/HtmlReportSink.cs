@@ -139,6 +139,18 @@ h2 { margin: 0 0 12px 0; font-size: 16px; border-bottom: 1px solid var(--border)
 .toggle .dot {
   width: 10px; height: 10px; border-radius: 50%; background: var(--c);
 }
+.toggle .rgb-dots {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 4px;
+  border: 1.5px solid var(--c);
+  border-radius: 12px;
+}
+.toggle .rgb-dots .pd {
+  width: 7px; height: 7px; border-radius: 50%;
+}
+.toggle .rgb-dots .pd.r { background: #ff2222; }
+.toggle .rgb-dots .pd.g { background: #22cc22; }
+.toggle .rgb-dots .pd.b { background: #2244ff; }
 .toggle .vbadge {
   font-size: 10px; font-weight: 600;
   padding: 1px 6px; border-radius: 8px;
@@ -163,6 +175,40 @@ svg#diagram {
 .swatch-line.dashed {
   background: repeating-linear-gradient(to right, #444 0 4px, transparent 4px 8px);
 }
+.rgb-3 {
+  display: inline-block; width: 22px; height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #ff2222 0 33%, #22cc22 33% 66%, #2244ff 66% 100%);
+  vertical-align: middle;
+}
+.gamut-legend {
+  display: flex; flex-wrap: wrap; gap: 10px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.gamut-legend .gl-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border: 1.5px solid var(--c, #888);
+  border-radius: 16px;
+  background: var(--panel);
+}
+.gamut-legend .gl-palette {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--c);
+  flex-shrink: 0;
+}
+.gamut-legend .gl-primaries {
+  display: inline-flex; gap: 2px;
+}
+.gamut-legend .gl-primaries span {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+.gamut-legend .gl-name { font-weight: 600; }
+.gamut-legend .gl-cov { color: var(--muted); }
+.gamut-legend .gl-pass { color: var(--pass); font-weight: 600; }
+.gamut-legend .gl-fail { color: var(--fail); font-weight: 600; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); }
 th:first-child, td:first-child { text-align: left; }
@@ -214,7 +260,9 @@ td.fail { color: var(--fail); font-weight: 600; }
   <div class="legend-row">
     <span class="item"><span class="swatch-line solid"></span> 目标色域</span>
     <span class="item"><span class="swatch-line dashed"></span> 实测色域</span>
+    <span class="item"><span class="rgb-3"></span> Primary 色</span>
   </div>
+  <div class="gamut-legend" id="gamut-legend"></div>
 </section>
 
   <section class="card">
@@ -319,6 +367,7 @@ function buildDiagram() {
   const points = locus.map(p => toPixel(p[0], p[1], plot));
 
   // Fan wedges meeting at midpoints → the colored fill has a C1 outer boundary.
+  // Fill is translucent so target gamut triangles drawn on top remain visible.
   const wp0 = toPixel(0.3127, 0.3290, plot);
   const fanGroup = svg('g', { id: 'horseshoe-fan' }, diagram);
   for (let i = 0; i < locus.length - 1; i++) {
@@ -332,6 +381,7 @@ function buildDiagram() {
       `${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ` +
       `${mx.toFixed(1)},${my.toFixed(1)}`);
     tri.setAttribute('fill', fill);
+    tri.setAttribute('fill-opacity', '0.55');
     tri.setAttribute('stroke', 'none');
     fanGroup.appendChild(tri);
   }
@@ -508,7 +558,12 @@ function buildToolbar(plot) {
     btn.className = 'toggle';
     btn.style.setProperty('--c', color);
     btn.dataset.target = g.name;
-    btn.innerHTML = `<span class="dot"></span><b>${g.name}</b>`
+    // Mini RGB primary dots (from the target triangle) — actual gamut identity colors,
+    // not just a generic palette swatch. Lets users see "this gamut = R/G/B primaries".
+    btn.innerHTML = `<span class="rgb-dots">`
+      + `<span class="pd r"></span><span class="pd g"></span><span class="pd b"></span>`
+      + `</span>`
+      + `<b>${g.name}</b>`
       + `<span class="cov">cov ${g.coverage == null ? '—' : (g.coverage*100).toFixed(1) + '%'}</span>`
       + `<span class="vbadge ${g.passed ? 'pass' : 'fail'}">${g.passed ? 'PASS' : 'FAIL'}</span>`;
     btn.addEventListener('click', () => toggleGamut(g.name, btn));
@@ -538,7 +593,7 @@ function buildGamutTable() {
     const tr = document.createElement('tr');
     tr.dataset.target = g.name;
     tr.innerHTML =
-      `<td><span class="patch-chip" style="background:${color}"></span><b>${g.name}</b></td>`
+      `<td><span class="patch-chip" style="background:${color}; width:14px; height:14px"></span><b>${g.name}</b></td>`
       + `<td>${g.coverage == null ? '—' : (g.coverage*100).toFixed(1) + '%'}</td>`
       + `<td>${num(g.whiteDeltaUv)}</td>`
       + `<td>${num(g.maxDeltaE2000)}</td>`
@@ -553,6 +608,32 @@ function buildGamutTable() {
       if (btn && btn.classList.contains('off')) { toggleGamut(g.name, btn); }
     });
     tbody.appendChild(tr);
+  });
+}
+
+function buildGamutLegend() {
+  const root = document.getElementById('gamut-legend');
+  if (!root) return;
+  RUN.gamuts.forEach((g, i) => {
+    const color = palette[i % palette.length];
+    const item = document.createElement('span');
+    item.className = 'gl-item';
+    item.style.setProperty('--c', color);
+    const cov = g.coverage == null ? '—' : (g.coverage * 100).toFixed(1) + '%';
+    const verdict = g.passed
+      ? `<span class="gl-pass">PASS</span>`
+      : `<span class="gl-fail">FAIL</span>`;
+    item.innerHTML =
+      `<span class="gl-palette"></span>` +
+      `<span class="gl-primaries">` +
+        `<span style="background:#ff2222"></span>` +
+        `<span style="background:#22cc22"></span>` +
+        `<span style="background:#2244ff"></span>` +
+      `</span>` +
+      `<span class="gl-name">${g.name}</span>` +
+      `<span class="gl-cov">cov ${cov}</span>` +
+      verdict;
+    root.appendChild(item);
   });
 }
 
@@ -628,6 +709,7 @@ function num(v, digits = 4) {
 (function init() {
   const { plot, markerGroup } = buildDiagram();
   buildToolbar(plot);
+  buildGamutLegend();
   buildGamutTable();
   buildSamplesTable(plot, markerGroup);
 })();

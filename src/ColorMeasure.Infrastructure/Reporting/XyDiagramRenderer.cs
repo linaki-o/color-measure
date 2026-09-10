@@ -104,13 +104,16 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             pixels[i] = ToPixel(Locus[i].X, Locus[i].Y, plot);
 
         // Fan wedges meeting at midpoints so the outer boundary is C1-continuous — no
-        // visible polygon facets even at high zoom.
-        using var paint = new SKPaint { IsAntialias = true };
+        // visible polygon facets even at high zoom. Translucent so target gamut
+        // triangles drawn on top remain readable.
+        using var paint = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 140) };
         for (int i = 0; i < Locus.Length - 1; i++)
         {
             var w1 = Locus[i].Nm;
             var w2 = Locus[i + 1].Nm;
-            paint.Color = (w2 == 0) ? new SKColor(120, 0, 130) : WavelengthToColor((w1 + w2) / 2.0);
+            paint.Color = (w2 == 0)
+                ? new SKColor(120, 0, 130, 140)
+                : WithAlpha(WavelengthToColor((w1 + w2) / 2.0), 140);
 
             var m = new SKPoint(
                 (pixels[i].X + pixels[i + 1].X) / 2f,
@@ -204,6 +207,8 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             (byte)Math.Clamp(255 * g, 0, 255),
             (byte)Math.Clamp(255 * b, 0, 255));
     }
+
+    private static SKColor WithAlpha(SKColor color, byte alpha) => new(color.Red, color.Green, color.Blue, alpha);
 
     private static void DrawGamuts(SKCanvas c, SKRect plot, Domain.Entities.MeasurementRun run)
     {
