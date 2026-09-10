@@ -60,9 +60,12 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("wavelengthToColor");
         html.Should().Contain("horseshoe-fan");
         html.Should().Contain("purple limit");
-        // Per-gamut primary-channel linear gradient fill (R/G/B stops)
+        // Per-gamut primary-channel linear gradient fill (R/G/B stops).
+        // Source is JS template literals, not rendered SVG, so we check the
+        // template pattern + the underlying API call.
         html.Should().Contain("linearGradient");
-        html.Should().Contain("grad-sRGB");
+        html.Should().Contain("`grad-${cssEscape(g.name)}`");
+        html.Should().Contain("url(#grad-${cssEscape(g.name)}");
     }
 
     [Fact]
