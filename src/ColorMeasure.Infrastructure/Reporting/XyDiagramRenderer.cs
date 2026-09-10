@@ -103,58 +103,48 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         for (int i = 0; i < Locus.Length; i++)
             pixels[i] = ToPixel(Locus[i].X, Locus[i].Y, plot);
 
-        // Rainbow-rim horseshoe: render the spectral locus as a thick colored band
-        // (~5% of plot width), with the interior left transparent so the background
-        // shows through. Standard CIE 1931 diagram convention — only the boundary of
-        // the visible color set gets colored; the interior stays white.
-        float rimWidth = Math.Max(8f, plot.Width * 0.012f);
-        int lastReal = pixels.Length - 2;
+        // Continuous color-field fill of the horseshoe interior, matching the
+        // canonical CIE 1931 reference diagrams. Each grid cell whose center is
+        // inside the horseshoe is filled with the sRGB equivalent of that
+        // chromaticity (xy → XYZ → linear sRGB → gamma, with out-of-gamut clipped).
+        // Step ≈ 0.8% of plot width gives ~100×113 cells; only inside-cells drawn.
+        float stepX = 0.008f, stepY = 0.008f;
+        // Build a closed polygon (locus in xy space) for the point-in-polygon test.
+        var polyXY = new (double X, double Y)[Locus.Length];
+        for (int i = 0; i < Locus.Length; i++) polyXY[i] = (Locus[i].X, Locus[i].Y);
 
-        float cx = 0, cy = 0;
-        for (int i = 0; i <= lastReal; i++) { cx += pixels[i].X; cy += pixels[i].Y; }
-        cx /= (lastReal + 1); cy /= (lastReal + 1);
-
-        var rimPts = new SKPoint[lastReal + 1];
-        for (int i = 0; i <= lastReal; i++)
+        bool PointInHorseshoe(double x, double y)
         {
-            float dx = cx - pixels[i].X, dy = cy - pixels[i].Y;
-            float len = MathF.Sqrt(dx * dx + dy * dy);
-            if (len == 0) len = 1;
-            rimPts[i] = new SKPoint(pixels[i].X + (dx / len) * rimWidth,
-                                     pixels[i].Y + (dy / len) * rimWidth);
+            bool inside = false;
+            for (int i = 0, j = polyXY.Length - 1; i < polyXY.Length; j = i++)
+            {
+                var (xi, yi) = polyXY[i];
+                var (xj, yj) = polyXY[j];
+                if (((yi > y) != (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+                {
+                    inside = !inside;
+                }
+            }
+            return inside;
         }
 
-        using var paint = new SKPaint { IsAntialias = true };
-        for (int i = 0; i < lastReal; i++)
+        using var cellPaint = new SKPaint { IsAntialias = false };
+        for (double y = 0; y <= 0.9 + 1e-9; y += stepY)
         {
-            paint.Color = WavelengthToColor((Locus[i].Nm + Locus[i + 1].Nm) / 2.0);
-            using var path = new SKPath();
-            path.MoveTo(pixels[i]);
-            path.LineTo(pixels[i + 1]);
-            path.LineTo(rimPts[i + 1]);
-            path.LineTo(rimPts[i]);
-            path.Close();
-            c.DrawPath(path, paint);
-        }
-
-        // Closing purple-limit corner.
-        {
-            var endP = pixels[lastReal];
-            var limitP = pixels[pixels.Length - 1];
-            float dx = cx - endP.X, dy = cy - endP.Y;
-            float len = MathF.Sqrt(dx * dx + dy * dy); if (len == 0) len = 1;
-            var endRim = new SKPoint(endP.X + (dx / len) * rimWidth, endP.Y + (dy / len) * rimWidth);
-            float dx2 = cx - limitP.X, dy2 = cy - limitP.Y;
-            float len2 = MathF.Sqrt(dx2 * dx2 + dy2 * dy2); if (len2 == 0) len2 = 1;
-            var limitRim = new SKPoint(limitP.X + (dx2 / len2) * rimWidth, limitP.Y + (dy2 / len2) * rimWidth);
-            paint.Color = new SKColor(120, 0, 130);
-            using var path = new SKPath();
-            path.MoveTo(endP);
-            path.LineTo(limitP);
-            path.LineTo(limitRim);
-            path.LineTo(endRim);
-            path.Close();
-            c.DrawPath(path, paint);
+            for (double x = 0; x <= 0.8 + 1e-9; x += stepX)
+            {
+                double cx = x + stepX / 2;
+                double cy = y + stepY / 2;
+                if (!PointInHorseshoe(cx, cy)) continue;
+                cellPaint.Color = XyToSrgb(cx, cy);
+                var px = plot.Left + (float)((cx) / 0.8 * plot.Width);
+                var py = plot.Top + (float)((1 - (cy + stepY / 2) / 0.9) * plot.Height);
+                c.DrawRect(px, py,
+                    (float)(stepX / 0.8 * plot.Width) + 0.5f,
+                    (float)(stepY / 0.9 * plot.Height) + 0.5f,
+                    cellPaint);
+            }
         }
 
         // Line of purples: solid purple-magenta stroke from 380nm endpoint to
@@ -178,14 +168,31 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
             c.DrawPath(BuildSmoothLocusPath(pixels, includePurpleLimit: false), locusStroke);
         }
 
-        // Wavelength tick labels at 480 / 580 / 680 for orientation.
-        using var labelFont = new SKFont(SKTypeface.Default, 9);
-        using var labelPaint = new SKPaint { Color = new SKColor(40, 40, 40), IsAntialias = true };
+        // Wavelength tick marks + labels at 20nm increments from 460 to 620nm.
+        // Direction is outward from the centroid so labels always sit outside the locus.
+        float cxLoc = 0, cyLoc = 0;
+        int lastReal2 = Locus.Length - 2;
+        for (int i = 0; i <= lastReal2; i++) { cxLoc += (float)Locus[i].X; cyLoc += (float)Locus[i].Y; }
+        cxLoc /= (lastReal2 + 1); cyLoc /= (lastReal2 + 1);
+        using var tickStroke = new SKPaint { Color = new SKColor(30, 30, 30), IsStroke = true, StrokeWidth = 1f, IsAntialias = true };
+        using var labelFont = new SKFont(SKTypeface.Default, 11);
+        using var labelPaint = new SKPaint { Color = new SKColor(26, 79, 163), IsAntialias = true };
+        var centroidPx = new SKPoint(
+            plot.Left + (float)(cxLoc / 0.8) * plot.Width,
+            plot.Top + (1 - (float)(cyLoc / 0.9)) * plot.Height);
         foreach (var (x, y, nm) in Locus)
         {
-            if (nm != 480 && nm != 580 && nm != 680) continue;
-            var pixel = ToPixel(x, y, plot);
-            c.DrawText($"{nm}", pixel.X + 4, pixel.Y - 4, SKTextAlign.Left, labelFont, labelPaint);
+            if (nm < 460 || nm > 620 || nm % 20 != 0) continue;
+            var p = ToPixel(x, y, plot);
+            float dx = p.X - centroidPx.X, dy = p.Y - centroidPx.Y;
+            float len = MathF.Sqrt(dx * dx + dy * dy); if (len == 0) len = 1;
+            float nx = dx / len, ny = dy / len;
+            c.DrawLine(
+                new SKPoint(p.X + nx * 4, p.Y + ny * 4),
+                new SKPoint(p.X + nx * 12, p.Y + ny * 12),
+                tickStroke);
+            SKTextAlign align = nx > 0.3f ? SKTextAlign.Left : (nx < -0.3f ? SKTextAlign.Right : SKTextAlign.Center);
+            c.DrawText($"{nm}", p.X + nx * 18, p.Y + ny * 18, align, labelFont, labelPaint);
         }
     }
 
@@ -210,6 +217,28 @@ public sealed class XyDiagramRenderer : IXyDiagramRenderer
         }
         path.LineTo(pixels[end - 1]);
         return path;
+    }
+
+    /// <summary>
+    /// sRGB equivalent of a CIE 1931 (x, y) chromaticity assuming Y=1:
+    /// xy -> XYZ (D65) -> linear sRGB (D65 matrix) -> sRGB display gamma.
+    /// Out-of-sRGB-gamut channels are clipped; this gives the magenta line-of-purples
+    /// look in the reference image.
+    /// </summary>
+    private static SKColor XyToSrgb(double x, double y)
+    {
+        if (y <= 0) return SKColors.Black;
+        double X = x / y;
+        double Z = (1 - x - y) / y;
+        double r =  3.2404542 * X - 1.5371385 - 0.4985314 * Z;
+        double g = -0.9692660 * X + 1.8760108 + 0.0415560 * Z;
+        double b =  0.0556434 * X - 0.2040259 + 1.0572252 * Z;
+        r = Math.Clamp(r, 0, 1); g = Math.Clamp(g, 0, 1); b = Math.Clamp(b, 0, 1);
+        static double Encode(double c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.Pow(c, 1.0 / 2.4) - 0.055;
+        return new SKColor(
+            (byte)Math.Round(Encode(r) * 255),
+            (byte)Math.Round(Encode(g) * 255),
+            (byte)Math.Round(Encode(b) * 255));
     }
 
     /// <summary>

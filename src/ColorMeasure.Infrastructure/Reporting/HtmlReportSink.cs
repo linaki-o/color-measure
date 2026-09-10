@@ -363,64 +363,58 @@ function buildDiagram() {
   ];
 
   // Pre-compute pixel positions and the smooth-path 'd' string once; reuse for
-  // the strip fill + the outline on top.
+  // the strip fill + the outline on top. Also compute the centroid for tick
+  // outward direction (same value as used by the rim/fill below).
   const points = locus.map(p => toPixel(p[0], p[1], plot));
-
-  // Rainbow-rim horseshoe: render the spectral locus as a thick colored band
-  // (~5% of plot width), with the interior left transparent so the background
-  // shows through. This is the standard CIE 1931 diagram convention used by
-  // Bruce Lindbloom, Wyszecki & Stiles, and the ITU-R BT.709/2020 references —
-  // the locus is the BOUNDARY of the visible color set, so only its boundary
-  // gets colored; inside is "achievable by mixing any combination of spectrum".
-  const rimWidth = Math.max(8, plot.width * 0.012);
-  const lastReal = points.length - 2;
-  // Centroid of real locus (excluding purple limit) — used as the inward target
-  // so the rim points toward the middle of the horseshoe.
   let cx = 0, cy = 0;
-  for (let i = 0; i <= lastReal; i++) { cx += points[i].x; cy += points[i].y; }
-  cx /= (lastReal + 1); cy /= (lastReal + 1);
+  for (let i = 0; i < points.length - 1; i++) { cx += points[i].x; cy += points[i].y; }
+  cx /= (points.length - 1); cy /= (points.length - 1);
 
-  const rimGroup = svg('g', { id: 'horseshoe-rim' }, diagram);
-  const rimPts = [];
-  for (let i = 0; i <= lastReal; i++) {
-    const dx = cx - points[i].x, dy = cy - points[i].y;
-    const len = Math.hypot(dx, dy) || 1;
-    rimPts.push({ x: points[i].x + (dx / len) * rimWidth,
-                  y: points[i].y + (dy / len) * rimWidth });
+  // Smooth color-field fill of the horseshoe interior. For each grid cell whose
+  // center lies inside the horseshoe polygon, compute the sRGB equivalent of
+  // that (x, y) chromaticity (assuming Y=1) and paint the cell with that color.
+  // This produces the continuous color gradient seen in the canonical CIE 1931
+  // reference diagrams, where every interior point displays its own chromaticity
+  // color rather than a single "primary color" wedge.
+  const fillGroup = svg('g', { id: 'horseshoe-fill' }, diagram);
+  // Build a closed polygon (locus points in order; ray-cast handles the
+  // implicit line-of-purples closure back to locus[0]) for the point-in-polygon
+  // test.
+  const locusXY = locus.map(p => [p[0], p[1]]);
+  function pointInHorseshoe(x, y) {
+    let inside = false;
+    for (let i = 0, j = locusXY.length - 1; i < locusXY.length; j = i++) {
+      const xi = locusXY[i][0], yi = locusXY[i][1];
+      const xj = locusXY[j][0], yj = locusXY[j][1];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
   }
-  for (let i = 0; i < lastReal; i++) {
-    const fill = wavelengthToColor((locus[i][2] + locus[i + 1][2]) / 2);
-    const quad = document.createElementNS(svgNS, 'polygon');
-    quad.setAttribute('points',
-      `${points[i].x.toFixed(1)},${points[i].y.toFixed(1)} ` +
-      `${points[i+1].x.toFixed(1)},${points[i+1].y.toFixed(1)} ` +
-      `${rimPts[i+1].x.toFixed(1)},${rimPts[i+1].y.toFixed(1)} ` +
-      `${rimPts[i].x.toFixed(1)},${rimPts[i].y.toFixed(1)}`);
-    quad.setAttribute('fill', fill);
-    quad.setAttribute('stroke', 'none');
-    rimGroup.appendChild(quad);
-  }
-  // Closing purple-limit corner: a small purple wedge from the last real locus
-  // point (770nm) toward the purple limit and back, so the bottom-right corner
-  // reads as "synthetic / non-spectral" rather than leaving a hard color edge.
-  {
-    const endP = points[lastReal];
-    const limitP = points[points.length - 1];
-    const dx = cx - endP.x, dy = cy - endP.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const endRim = { x: endP.x + (dx / len) * rimWidth, y: endP.y + (dy / len) * rimWidth };
-    const dx2 = cx - limitP.x, dy2 = cy - limitP.y;
-    const len2 = Math.hypot(dx2, dy2) || 1;
-    const limitRim = { x: limitP.x + (dx2 / len2) * rimWidth, y: limitP.y + (dy2 / len2) * rimWidth };
-    const quad = document.createElementNS(svgNS, 'polygon');
-    quad.setAttribute('points',
-      `${endP.x.toFixed(1)},${endP.y.toFixed(1)} ` +
-      `${limitP.x.toFixed(1)},${limitP.y.toFixed(1)} ` +
-      `${limitRim.x.toFixed(1)},${limitRim.y.toFixed(1)} ` +
-      `${endRim.x.toFixed(1)},${endRim.y.toFixed(1)}`);
-    quad.setAttribute('fill', '#780082');
-    quad.setAttribute('stroke', 'none');
-    rimGroup.appendChild(quad);
+
+  // Cell size in xy-chromaticity units. ~0.8% step gives ~100×113 ≈ 11300 cells
+  // total; only the cells inside the horseshoe are emitted (~6000). At this
+  // density the cell borders are below the browser's perceptual threshold at
+  // the typical display zoom.
+  const stepX = 0.008;
+  const stepY = 0.008;
+  for (let y = 0; y <= 0.9 + 1e-9; y += stepY) {
+    for (let x = 0; x <= 0.8 + 1e-9; x += stepX) {
+      const cx = x + stepX / 2;
+      const cy = y + stepY / 2;
+      if (!pointInHorseshoe(cx, cy)) continue;
+      const fill = xyToSrgbFill(cx, cy);
+      const px = plot.x + (cx / MAX_X) * plot.width;
+      const py = plot.y + (1 - (cy + stepY / 2) / MAX_Y) * plot.height;
+      const cellW = (stepX / MAX_X) * plot.width + 0.5;
+      const cellH = (stepY / MAX_Y) * plot.height + 0.5;
+      svg('rect', {
+        x: px.toFixed(1), y: py.toFixed(1),
+        width: cellW.toFixed(1), height: cellH.toFixed(1),
+        fill: fill, stroke: 'none',
+      }, fillGroup);
+    }
   }
 
   // Line of purples: closed boundary of the visible spectrum. Render it as a
@@ -446,12 +440,30 @@ function buildDiagram() {
   locusOutline.setAttribute('stroke-width', '1.5');
   diagram.appendChild(locusOutline);
 
-  // Tick labels at 480 / 580 / 680 for orientation.
+  // Wavelength tick marks + labels at 20nm increments from 460nm to 620nm.
+  // Tick = short outward line crossing the locus; label sits outside.
   for (const [x, y, nm] of locus) {
-    if (nm !== 480 && nm !== 580 && nm !== 680) continue;
+    if (nm < 460 || nm > 620 || nm % 20 !== 0) continue;
     const p = toPixel(x, y, plot);
-    const t = svg('text', { x: p.x + 5, y: p.y - 4, 'font-size': 9, fill: '#222' }, diagram);
-    t.textContent = nm;
+    // Outward direction = away from centroid
+    const dx = p.x - cx, dy = p.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len, ny = dy / len;
+    const tickInner = { x: p.x + nx * 4,  y: p.y + ny * 4  };
+    const tickOuter = { x: p.x + nx * 12, y: p.y + ny * 12 };
+    svg('line', {
+      x1: tickInner.x.toFixed(1), y1: tickInner.y.toFixed(1),
+      x2: tickOuter.x.toFixed(1), y2: tickOuter.y.toFixed(1),
+      stroke: '#222', 'stroke-width': 1,
+    }, diagram);
+    const labelPos = { x: p.x + nx * 18, y: p.y + ny * 18 };
+    const t = svg('text', {
+      x: labelPos.x.toFixed(1), y: labelPos.y.toFixed(1),
+      'font-size': 11, fill: '#1a4fa3',
+      'text-anchor': nx > 0.3 ? 'start' : (nx < -0.3 ? 'end' : 'middle'),
+      'dominant-baseline': ny > 0.3 ? 'hanging' : (ny < -0.3 ? 'auto' : 'middle'),
+    }, diagram);
+    t.textContent = `${nm}`;
   }
 
   // Axis labels
@@ -587,6 +599,25 @@ function wavelengthToColor(nm) {
   r *= factor; g *= factor; b *= factor;
   const clamp = v => Math.max(0, Math.min(255, Math.round(v * 255)));
   return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+}
+
+// sRGB equivalent of a CIE 1931 (x, y) chromaticity, assuming Y=1.
+// Pipeline: xy -> XYZ (D65) -> linear sRGB (D65) -> sRGB display gamma.
+function xyToSrgbFill(x, y) {
+  if (!(y > 0)) return '#000';
+  const X = x / y;
+  const Z = (1 - x - y) / y;
+  let r =  3.2404542 * X - 1.5371385 - 0.4985314 * Z;
+  let g = -0.9692660 * X + 1.8760108 + 0.0415560 * Z;
+  let b =  0.0556434 * X - 0.2040259 + 1.0572252 * Z;
+  // Out-of-sRGB-gamut chromaticities clamp to sRGB edges — that is what the
+  // reference image does for the line-of-purples area (deep magenta).
+  r = Math.max(0, Math.min(1, r));
+  g = Math.max(0, Math.min(1, g));
+  b = Math.max(0, Math.min(1, b));
+  const enc = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  const c255 = v => Math.round(enc(v) * 255);
+  return `rgb(${c255(r)},${c255(g)},${c255(b)})`;
 }
 
 function buildToolbar(plot) {

@@ -56,9 +56,11 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("toggleGamut");
         html.Should().Contain("plantMarker");
         html.Should().Contain("showSampleDetail");
-        // Colored horseshoe rim + wavelength legend
+        // Smooth color-field fill of the horseshoe (xy → sRGB grid) + wavelength
+        // legend. Source is JS so we check the literal function/variable names.
+        html.Should().Contain("xyToSrgbFill");
+        html.Should().Contain("horseshoe-fill");
         html.Should().Contain("wavelengthToColor");
-        html.Should().Contain("horseshoe-rim");
         html.Should().Contain("purple limit");
         // Per-gamut primary-channel linear gradient fill (R/G/B stops).
         // Source is JS template literals, not rendered SVG, so we check the
