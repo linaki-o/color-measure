@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ColorMeasure.Host.Wpf</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ColorMeasure.Domain\ColorMeasure.Domain.csproj" />
+    <ProjectReference Include="..\ColorMeasure.Application\ColorMeasure.Application.csproj" />
+    <ProjectReference Include="..\ColorMeasure.Infrastructure\ColorMeasure.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

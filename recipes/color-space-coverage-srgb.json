@@ -1,0 +1,20 @@
+{
+  "name": "ColorSpaceCoverage-sRGB",
+  "connect": "auto",
+  "calibrateBeforeStart": true,
+  "settleMs": 1500,
+  "targets": ["sRGB", "DCI-P3", "AdobeRGB", "Rec.2020"],
+  "patches": [
+    { "id": "white",  "hex": "#FFFFFF", "avg": 8, "label": "white" },
+    { "id": "red",    "hex": "#FF0000", "avg": 8, "label": "red primary" },
+    { "id": "green",  "hex": "#00FF00", "avg": 8, "label": "green primary" },
+    { "id": "blue",   "hex": "#0000FF", "avg": 8, "label": "blue primary" },
+    { "id": "gray-25",  "hex": "#404040", "avg": 4 },
+    { "id": "gray-50",  "hex": "#808080", "avg": 4 },
+    { "id": "gray-75",  "hex": "#C0C0C0", "avg": 4 }
+  ],
+  "pass": {
+    "max_delta_e2000": 5.0,
+    "min_coverage": 0.90
+  }
+}

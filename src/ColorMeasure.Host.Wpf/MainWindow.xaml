@@ -1,0 +1,9 @@
+<Window x:Class="ColorMeasure.Host.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ColorMeasure" Height="480" Width="720">
+    <Grid Margin="12">
+        <TextBlock Text="ColorMeasure WPF host — UI scaffold (v0 uses the CLI runner)."
+                   VerticalAlignment="Center" HorizontalAlignment="Center" />
+    </Grid>
+</Window>
