@@ -58,11 +58,11 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*" MinWidth="600" />
-                <GridSplitter Width="4" Background="#eee" />
+                <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="1*" MinWidth="320" />
             </Grid.ColumnDefinitions>
 
-            <!-- Patch list -->
+            <!-- Patch list (column 0) -->
             <DataGrid x:Name="PatchesGrid"
                       Grid.Column="0"
                       ItemsSource="{Binding Patches}"
@@ -100,10 +100,18 @@
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Avg"       Binding="{Binding Avg,  UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="50" />
                     <DataGridTextColumn Header="Label"     Binding="{Binding Label,UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                </DataGrid.Columns>
+                 </DataGrid.Columns>
             </DataGrid>
 
-            <!-- Settings panel -->
+            <!-- Splitter between patch list and settings (column 1) -->
+            <GridSplitter Grid.Column="1"
+                          Width="4"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="#eee"
+                          ResizeBehavior="PreviousAndNext" />
+
+            <!-- Settings panel (column 2) -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="14,8,14,14">
                     <TextBlock Text="配方" FontSize="14" FontWeight="Bold" Margin="0,0,0,6" />
@@ -124,8 +132,13 @@
                     <ItemsControl ItemsSource="{Binding AllTargets}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <CheckBox Margin="0,2" Content="{Binding}" Click="OnTargetToggled"
-                                          IsChecked="{Binding IsTargetSelected, RelativeSource={RelativeSource AncestorType=Window}, Converter={x:Static local:TargetToggleConverter.Instance}, ConverterParameter={Binding}}">
+                                <CheckBox Margin="0,2" Content="{Binding}" Click="OnTargetToggled">
+                                    <CheckBox.IsChecked>
+                                        <MultiBinding Converter="{x:Static local:TargetCheckedConverter.Instance}" Mode="OneWay">
+                                            <Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                            <Binding />
+                                        </MultiBinding>
+                                    </CheckBox.IsChecked>
                                 </CheckBox>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
