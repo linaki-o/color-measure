@@ -35,6 +35,15 @@ public sealed class PdfReportSink(IXyDiagramRenderer diagram) : IReportSink
 
                     col.Item().Image(png);
 
+                    if (run.Gamma is { } g)
+                    {
+                        col.Item().Text("Gamma transfer function").FontSize(14).Bold();
+                        col.Item().Text(
+                            $"γ = {g.Gamma:F3}    a = {g.ScaleA:F3}    R² = {g.RSquared:F4}    " +
+                            $"Black {g.BlackLevelCdM2:F2} cd/m²    White {g.WhiteLevelCdM2:F2} cd/m²    " +
+                            $"n = {g.SampleCount}");
+                    }
+
                     col.Item().Text("Gamut analysis").FontSize(14).Bold();
                     col.Item().Table(table =>
                     {

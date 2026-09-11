@@ -52,5 +52,31 @@ public sealed class CsvReportSink : IReportSink
             white_duv = g.WhiteDeltaUv,
             passed = g.Passed,
         })));
+
+        if (run.Gamma is { } gm)
+        {
+            await csv.WriteRecordsAsync(new[]
+            {
+                new
+                {
+                    target = "_gamma",
+                    channel = "luminance",
+                    dE2000 = (double?)null,
+                    coverage = (double?)null,
+                    white_duv = (double?)null,
+                    passed = false,
+                }
+            });
+            await csv.NextRecordAsync();
+            csv.WriteField("gamma");
+            csv.WriteField(gm.Gamma.ToString("F4"));
+            csv.WriteField("");
+            csv.WriteField(gm.ScaleA.ToString("F4"));
+            csv.WriteField(gm.RSquared.ToString("F4"));
+            csv.WriteField(gm.BlackLevelCdM2.ToString("F4"));
+            csv.WriteField("");
+            csv.WriteField("");
+            await csv.NextRecordAsync();
+        }
     }
 }

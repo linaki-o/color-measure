@@ -68,6 +68,10 @@ public class HtmlReportSinkTests : IDisposable
         html.Should().Contain("linearGradient");
         html.Should().Contain("`grad-${cssEscape(g.name)}`");
         html.Should().Contain("url(#grad-${cssEscape(g.name)}");
+        // Gamma card: present whenever run.Gamma != null. (Our test data has no
+        // Gamma so the card is hidden but the script must still register the
+        // builder so it appears when Gamma IS present.)
+        html.Should().Contain("buildGamma");
     }
 
     [Fact]

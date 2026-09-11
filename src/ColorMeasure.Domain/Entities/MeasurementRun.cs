@@ -26,4 +26,5 @@ public sealed record MeasurementRun(
     DateTimeOffset FinishedAt,
     string ProbeSerialNo,
     IReadOnlyList<ColorSample> Samples,
-    IReadOnlyList<GamutReport> GamutReports);
+    IReadOnlyList<GamutReport> GamutReports,
+    GammaReport? Gamma = null);

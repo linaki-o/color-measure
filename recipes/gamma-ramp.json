@@ -1,0 +1,24 @@
+{
+  "name": "Gamma-Ramp",
+  "connect": "auto",
+  "calibrateBeforeStart": true,
+  "settleMs": 1500,
+  "targets": ["sRGB"],
+  "patches": [
+    { "id": "#000000", "hex": "#000000", "avg": 8 },
+    { "id": "#191919", "hex": "#191919", "avg": 8 },
+    { "id": "#333333", "hex": "#333333", "avg": 8 },
+    { "id": "#4d4d4d", "hex": "#4d4d4d", "avg": 8 },
+    { "id": "#666666", "hex": "#666666", "avg": 8 },
+    { "id": "#808080", "hex": "#808080", "avg": 8 },
+    { "id": "#999999", "hex": "#999999", "avg": 8 },
+    { "id": "#b3b3b3", "hex": "#b3b3b3", "avg": 8 },
+    { "id": "#cccccc", "hex": "#cccccc", "avg": 8 },
+    { "id": "#e6e6e6", "hex": "#e6e6e6", "avg": 8 },
+    { "id": "#ffffff", "hex": "#ffffff", "avg": 8 },
+    { "id": "red",   "hex": "#FF0000", "avg": 8 },
+    { "id": "green", "hex": "#00FF00", "avg": 8 },
+    { "id": "blue",  "hex": "#0000FF", "avg": 8 },
+    { "id": "white", "hex": "#FFFFFF", "avg": 8 }
+  ]
+}

@@ -74,6 +74,20 @@ public sealed class HtmlReportSink : IReportSink
                     b = Pt(g.MeasuredBlue), w = Pt(g.MeasuredWhite),
                 },
             }).ToList(),
+            gamma = run.Gamma is null ? null : new GammaData
+            {
+                gamma = San(run.Gamma.Gamma),
+                scaleA = San(run.Gamma.ScaleA),
+                rSquared = San(run.Gamma.RSquared),
+                blackLevelCdM2 = San(run.Gamma.BlackLevelCdM2),
+                whiteLevelCdM2 = San(run.Gamma.WhiteLevelCdM2),
+                sampleCount = run.Gamma.SampleCount,
+                curve = run.Gamma.Curve.Select(p => new GammaPointData
+                {
+                    inputNormalized = San(p.InputNormalized),
+                    luminanceNormalized = San(p.LuminanceNormalized),
+                }).ToList(),
+            },
         };
         var json = JsonSerializer.Serialize(data, JsonOpts);
 
@@ -169,6 +183,17 @@ svg#diagram {
   font-size: 12px; color: var(--muted);
   margin-top: 8px;
 }
+.gamma-stats {
+  display: flex; flex-wrap: wrap; gap: 16px 28px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.gamma-stats > div { display: flex; align-items: baseline; gap: 6px; }
+.gamma-stats .lbl { color: var(--muted); font-size: 11px; }
+.gamma-stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.gamma-stats .gl-pass { color: var(--pass); font-weight: 600; font-size: 12px; }
+.gamma-stats .gl-cov { color: #b5851a; font-weight: 600; font-size: 12px; }
+.gamma-stats .gl-fail { color: var(--fail); font-weight: 600; font-size: 12px; }
 .legend-row .item { display: inline-flex; align-items: center; gap: 6px; }
 .swatch-line { display: inline-block; width: 22px; height: 3px; vertical-align: middle; }
 .swatch-line.solid { background: #444; }
@@ -282,6 +307,12 @@ td.fail { color: var(--fail); font-weight: 600; }
       </thead>
       <tbody id="gamut-rows"></tbody>
     </table>
+  </section>
+
+  <section class="card" id="gamma-card" style="display:none">
+    <h2>Gamma 曲线</h2>
+    <div id="gamma-summary" class="gamma-summary"></div>
+    <svg id="gamma-plot" viewBox="0 0 720 360" preserveAspectRatio="xMidYMid meet" style="background:#fff;border:1px solid var(--border);border-radius:4px;max-width:100%;height:auto;margin-top:8px"></svg>
   </section>
 
   <section class="card">
@@ -808,7 +839,100 @@ function num(v, digits = 4) {
   buildGamutLegend();
   buildGamutTable();
   buildSamplesTable(plot, markerGroup);
+  buildGamma();
 })();
+
+function buildGamma() {
+  if (!RUN.gamma) {
+    document.getElementById('gamma-card').style.display = 'none';
+    return;
+  }
+  const card = document.getElementById('gamma-card');
+  card.style.display = '';
+  const g = RUN.gamma;
+  const verdict = g.rSquared >= 0.99 ? '<span class="gl-pass">PASS</span>'
+                  : g.rSquared >= 0.95 ? '<span class="gl-cov">OK</span>'
+                  : '<span class="gl-fail">FAIL</span>';
+  document.getElementById('gamma-summary').innerHTML =
+    `<div class="gamma-stats">` +
+    `<div><span class="lbl">γ (gamma)</span><b>${g.gamma.toFixed(3)}</b></div>` +
+    `<div><span class="lbl">a</span><b>${g.scaleA.toFixed(3)}</b></div>` +
+    `<div><span class="lbl">R²</span><b>${g.rSquared.toFixed(4)}</b> ${verdict}</div>` +
+    `<div><span class="lbl">黑场</span><b>${g.blackLevelCdM2.toFixed(2)}</b> cd/m²</div>` +
+    `<div><span class="lbl">白场</span><b>${g.whiteLevelCdM2.toFixed(2)}</b> cd/m²</div>` +
+    `<div><span class="lbl">样本</span><b>${g.sampleCount}</b></div>` +
+    `</div>`;
+
+  // Plot: input 0..1 on x, normalized luminance 0..1 on y, log-log axes.
+  const svgEl = document.getElementById('gamma-plot');
+  svgEl.innerHTML = '';
+  const W = 720, H = 360, M = { l: 50, r: 16, t: 14, b: 30 };
+  const plotW = W - M.l - M.r, plotH = H - M.t - M.b;
+
+  // grid (log scale)
+  const g1 = svg('g', { stroke: '#eee' }, svgEl);
+  for (let p = -1; p <= 0; p += 0.25) {
+    const x = M.l + (p + 1) / 1 * plotW;
+    svg('line', { x1: x, y1: M.t, x2: x, y2: M.t + plotH, stroke: '#eee' }, g1);
+  }
+  for (let p = 0; p <= 1; p += 0.25) {
+    const y = M.t + (1 - p) * plotH;
+    svg('line', { x1: M.l, y1: y, x2: M.l + plotW, y2: y, stroke: '#eee' }, g1);
+  }
+
+  // axis labels (log: 0.01, 0.1, 1.0)
+  [0.01, 0.1, 1.0].forEach(v => {
+    const x = M.l + (Math.log10(v) + 1) * plotW;
+    const t = svg('text', { x: x, y: M.t + plotH + 14, 'text-anchor': 'middle', 'font-size': 10, fill: '#444' }, svgEl);
+    t.textContent = v.toString();
+  });
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(v => {
+    const y = M.t + (1 - v) * plotH;
+    const t = svg('text', { x: M.l - 6, y: y + 3, 'text-anchor': 'end', 'font-size': 10, fill: '#444' }, svgEl);
+    t.textContent = v.toFixed(2);
+  });
+
+  // border
+  svg('rect', { x: M.l, y: M.t, width: plotW, height: plotH, fill: 'none', stroke: '#888' }, svgEl);
+
+  // ideal reference curves: 2.2, 1.8, 2.4 (log-log straight lines)
+  function idealPath(gamma) {
+    const pts = [];
+    for (let v = 0.01; v <= 1.0; v *= 1.05) {
+      const lx = M.l + (Math.log10(v) + 1) * plotW;
+      const yNorm = Math.pow(v, gamma);
+      const ly = M.t + (1 - yNorm) * plotH;
+      pts.push(lx + ',' + ly);
+    }
+    return 'M' + pts.join(' L');
+  }
+  svg('path', { d: idealPath(1.8), fill: 'none', stroke: '#bbb', 'stroke-width': 1, 'stroke-dasharray': '3,3' }, svgEl);
+  svg('path', { d: idealPath(2.4), fill: 'none', stroke: '#bbb', 'stroke-width': 1, 'stroke-dasharray': '3,3' }, svgEl);
+
+  // measured points
+  const gPts = svg('g', { fill: '#0969da' }, svgEl);
+  g.curve.forEach(p => {
+    if (p.inputNormalized <= 0 || p.inputNormalized > 1) return;
+    const lx = M.l + (Math.log10(p.inputNormalized) + 1) * plotW;
+    const ly = M.t + (1 - p.luminanceNormalized) * plotH;
+    svg('circle', { cx: lx, cy: ly, r: 3.5, fill: '#0969da', stroke: '#fff', 'stroke-width': 1 }, gPts);
+  });
+
+  // axis title
+  const xTitle = svg('text', { x: M.l + plotW / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 11, fill: '#333' }, svgEl);
+  xTitle.textContent = 'input (log)';
+  const yTitle = svg('text', { x: 8, y: M.t + plotH / 2, 'text-anchor': 'middle', 'font-size': 11, fill: '#333', transform: 'rotate(-90 8 ' + (M.t + plotH / 2) + ')' }, svgEl);
+  yTitle.textContent = 'Y / Y_white';
+
+  // legend
+  const lx0 = M.l + plotW - 130, ly0 = M.t + 8;
+  svg('line', { x1: lx0, y1: ly0 + 6, x2: lx0 + 18, y2: ly0 + 6, stroke: '#bbb', 'stroke-width': 1, 'stroke-dasharray': '3,3' }, svgEl);
+  const l1 = svg('text', { x: lx0 + 22, y: ly0 + 10, 'font-size': 10, fill: '#555' }, svgEl);
+  l1.textContent = 'γ=1.8 / 2.4 ref';
+  const ldot = svg('circle', { cx: lx0 + 9, cy: ly0 + 24, r: 3.5, fill: '#0969da' }, svgEl);
+  const l2 = svg('text', { x: lx0 + 22, y: ly0 + 28, 'font-size': 10, fill: '#555' }, svgEl);
+  l2.textContent = 'measured';
+}
 </script>
 </body>
 </html>
@@ -834,6 +958,24 @@ function num(v, digits = 4) {
         public string finishedAt { get; set; } = "";
         public List<SampleData> samples { get; set; } = new();
         public List<GamutData> gamuts { get; set; } = new();
+        public GammaData? gamma { get; set; }
+    }
+
+    public sealed class GammaData
+    {
+        public double? gamma { get; set; }
+        public double? scaleA { get; set; }
+        public double? rSquared { get; set; }
+        public double? blackLevelCdM2 { get; set; }
+        public double? whiteLevelCdM2 { get; set; }
+        public int sampleCount { get; set; }
+        public List<GammaPointData> curve { get; set; } = new();
+    }
+
+    public sealed class GammaPointData
+    {
+        public double? inputNormalized { get; set; }
+        public double? luminanceNormalized { get; set; }
     }
 
     public sealed class SampleData

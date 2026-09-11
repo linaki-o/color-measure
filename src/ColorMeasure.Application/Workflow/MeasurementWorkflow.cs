@@ -71,6 +71,21 @@ public sealed class MeasurementWorkflow(
             return Result<WorkflowResult>.Fail(analysisResult.Error!);
         var reports = analysisResult.Value!;
 
+        // Optional gamma fit: only runs if the plan contains >=3 grayscale samples.
+        // Without grayscale, a luminance ramp cannot be derived from color samples.
+        GammaReport? gamma = null;
+        var gammaResult = GammaAnalyzer.Analyze(samples);
+        if (gammaResult.IsSuccess)
+        {
+            gamma = gammaResult.Value!;
+            log.LogInformation("Gamma fit: gamma={Gamma:F3} R2={R2:F4} black={Black:F2} white={White:F2} n={N}",
+                gamma.Gamma, gamma.RSquared, gamma.BlackLevelCdM2, gamma.WhiteLevelCdM2, gamma.SampleCount);
+        }
+        else
+        {
+            log.LogDebug("Gamma skipped: {Error}", gammaResult.Error?.Message);
+        }
+
         await display.HideAsync(ct);
 
         var run = new MeasurementRun(
@@ -79,7 +94,8 @@ public sealed class MeasurementWorkflow(
             FinishedAt: DateTimeOffset.UtcNow,
             ProbeSerialNo: probeInfo.SerialNo,
             Samples: samples,
-            GamutReports: reports);
+            GamutReports: reports,
+            Gamma: gamma);
 
         return Result<WorkflowResult>.Ok(new WorkflowResult(run));
     }
