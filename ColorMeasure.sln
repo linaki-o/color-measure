@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ColorMeasure.Application", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ColorMeasure.Infrastructure", "src\ColorMeasure.Infrastructure\ColorMeasure.Infrastructure.csproj", "{A0000000-0000-0000-0000-000000000003}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ColorMeasure.Host.Wpf.Tests", "tests\ColorMeasure.Host.Wpf.Tests\ColorMeasure.Host.Wpf.Tests.csproj", "{B0000000-0000-0000-0000-000000000004}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ColorMeasure.Host.Cli", "src\ColorMeasure.Host.Cli\ColorMeasure.Host.Cli.csproj", "{A0000000-0000-0000-0000-000000000004}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ColorMeasure.Host.Wpf", "src\ColorMeasure.Host.Wpf\ColorMeasure.Host.Wpf.csproj", "{A0000000-0000-0000-0000-000000000005}"
@@ -60,6 +62,10 @@ Global
 		{B0000000-0000-0000-0000-000000000003}.Debug|x64.Build.0 = Debug|x64
 		{B0000000-0000-0000-0000-000000000003}.Release|x64.ActiveCfg = Release|x64
 		{B0000000-0000-0000-0000-000000000003}.Release|x64.Build.0 = Release|x64
+		{B0000000-0000-0000-0000-000000000004}.Debug|x64.ActiveCfg = Debug|x64
+		{B0000000-0000-0000-0000-000000000004}.Debug|x64.Build.0 = Debug|x64
+		{B0000000-0000-0000-0000-000000000004}.Release|x64.ActiveCfg = Release|x64
+		{B0000000-0000-0000-0000-000000000004}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -73,5 +79,6 @@ Global
 		{B0000000-0000-0000-0000-000000000001} = {22222222-2222-2222-2222-222222222222}
 		{B0000000-0000-0000-0000-000000000002} = {22222222-2222-2222-2222-222222222222}
 		{B0000000-0000-0000-0000-000000000003} = {22222222-2222-2222-2222-222222222222}
+		{B0000000-0000-0000-0000-000000000004} = {22222222-2222-2222-2222-222222222222}
 	EndGlobalSection
 EndGlobal

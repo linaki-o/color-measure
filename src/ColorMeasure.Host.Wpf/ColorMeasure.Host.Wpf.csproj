@@ -3,14 +3,26 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>ColorMeasure.Host.Wpf</RootNamespace>
+    <ApplicationIcon></ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ColorMeasure.Domain\ColorMeasure.Domain.csproj" />
     <ProjectReference Include="..\ColorMeasure.Application\ColorMeasure.Application.csproj" />
     <ProjectReference Include="..\ColorMeasure.Infrastructure\ColorMeasure.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\native\CASDK2.dll;..\..\native\CASDK2Calc.dll;..\..\native\CASDK2Comm.dll;..\..\native\CASDK2Net.dll;..\..\native\CASDK2Socket.dll;..\..\native\CA200Srvr.dll">
+      <Link>native\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
