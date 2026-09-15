@@ -3,7 +3,7 @@
   "connect": "auto",
   "calibrateBeforeStart": true,
   "settleMs": 1500,
-  "targets": ["sRGB"],
+  "targets": ["sRGB", "DCI-P3", "AdobeRGB", "Rec.2020"],
   "patches": [
     { "id": "#000000", "hex": "#000000", "avg": 8 },
     { "id": "#191919", "hex": "#191919", "avg": 8 },

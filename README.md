@@ -1,139 +1,101 @@
 # ColorMeasure
 
-自动化显示器色彩 QA 工具，基于 Konica Minolta CA-410 SDK。
+显示器色彩 QA 工具，基于 Konica Minolta CA-410 SDK。
 
-`color-measure` 接收一份声明式 JSON 测试计划，自动把每个 patch 贴到屏幕上、用 CA-410
-测一遍，对比 sRGB / DCI-P3 / AdobeRGB / Rec.2020 等目标色域，输出 CSV / XLSX / PDF
-/ 自包含交互式 HTML 报告。
+读取一份声明式 JSON 配方（patches + 测量条件 + 目标色域），驱动 CA-410 采集每个
+patch 的 XYZ/亮度/色温等数据，对比 sRGB / DCI-P3 / AdobeRGB / Rec.2020 等
+标准色域，输出 CSV / XLSX / PDF / **自包含交互式 HTML 报告**。
 
-> v0 范围：色域覆盖率 + USB AutoConnect + GPU 全屏色板 + 全套报告。
-> 见 [`docs/architecture.md`](docs/architecture.md) 的 §0 "v0 Scope"。
+支持的能力：
 
----
+- **色域覆盖率与 dE2000**：每个目标色域算 Coverage 和 R/G/B/W 的 ΔE2000
+- **白点偏差 Δu'v' (W)**：CIE 1976 UCS 中白点到 D65 的距离
+- **Gamma 拟合**：对灰阶 ramp 做 log-log OLS 拟合 γ、a、R²、Black/White cd/m²
+- **CIE 1931 xy 色度图**：连续色彩场（每个 0.8% 栅格按 sRGB 等价色填色）、参考线、波长刻度
+- **3 套报表**：CSV（原始）+ XLSX（摘要）+ PDF/A4；**HTML 报告支持交互**（切换图层、悬停标点、点击展开）
+- **WPF 配方编辑器**（v1）：可视化编辑 JSON 配方，所见即所得的色彩选择器
+- **GPU 全屏色板驱动**：自动把 patch 贴到屏幕上（不依赖外部 Pattern Generator）
 
-## 1. 环境要求
+## 快速开始
 
-| 项 | 要求 |
+```powershell
+# 构建 + 测试
+dotnet build ColorMeasure.sln -c Debug
+dotnet test  ColorMeasure.sln -c Debug
+
+# 跑一次 dry-run（不接硬件，只解析 recipe）
+src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows\color-measure.exe `
+  --plan recipes\color-space-coverage-srgb.json --dry-run
+
+# 接 CA-410 真实测量
+src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows\color-measure.exe `
+  --plan recipes\color-space-coverage-srgb.json --out runs\demo
+```
+
+> 第一次跑前确保 `native\CASDK2*.dll` 已 vendor（已包含）。CLI 端只产出**当前 recipe 已定义
+> 的色域**——recipe 里没列的色域不会分析。
+
+## 必备环境
+
+| 项目 | 要求 |
 |---|---|
 | OS | Windows 10/11 x64 |
-| SDK | Konica Minolta CA-410 SDK 安装在 `C:\Program Files (x86)\KONICA MINOLTA\CA-S40` |
-| .NET | .NET 8 SDK 或更新（实测在 .NET 10 SDK / 8.0 runtime 上跑通） |
-| 探针 | CA-410 通过 USB 连接，关闭同时占用探针的 CA-S40 软件 |
+| SDK | Konica Minolta CA-410 SDK 装在 `C:\Program Files (x86)\KONICA MINOLTA\CA-S40` |
+| .NET | .NET 8 SDK 或更新（在 .NET 10 SDK 上构建/运行） |
+| 探针 | CA-410 通过 USB 连接；同时间占用探针的 CA-S40 主程序需要关掉 |
 
-## 2. 解决方案布局
+## 仓库结构
 
 ```
 ColorMeasure.sln
 ├── src/
-│   ├── ColorMeasure.Domain          纯实体 + 抽象接口（无外部依赖）
-│   ├── ColorMeasure.Application     计划解析、色域分析、workflow
-│   ├── ColorMeasure.Infrastructure  CA-SDK2 适配、GPU 全屏驱动、报告
-│   ├── ColorMeasure.Host.Cli        color-measure 命令行入口
-│   └── ColorMeasure.Host.Wpf        WPF GUI 占位（v1 待填充）
-├── tests/
-│   ├── ColorMeasure.Domain.Tests           ΔE2000 数学边界用例
-│   ├── ColorMeasure.Application.Tests      测试计划解析、分析逻辑、Sharma 测试向量
-│   └── ColorMeasure.Infrastructure.Tests   HTML 报告快照
-├── native/                       vendor 的 CASDK2*.dll + CA200Srvr.dll
-├── recipes/                      测试计划 JSON 样例
-└── docs/                          设计 / 用法 / 报告字段说明
+│   ├── ColorMeasure.Domain          实体 + 抽象接口（无外部依赖）
+│   ├── ColorMeasure.Application     recipe 解析、色域分析、gamma、workflow
+│   ├── ColorMeasure.Infrastructure  CA-SDK2 适配、GPU 全屏驱动、报表
+│   ├── ColorMeasure.Host.Cli        CLI 入口（color-measure.exe）
+│   └── ColorMeasure.Host.Wpf        WPF 配方编辑器（v1）
+├── tests/                           62 个测试，覆盖 Ciede2000 / ColorAnalyzer / Gamma /
+│                                   HtmlReport / RecipeSerializer
+├── native/                           vendor 的 CASDK2*.dll + CA200Srvr.dll
+├── recipes/                          测试配方 JSON 示例
+└── docs/                              详细文档
+    ├── architecture.md               系统设计、SDK 适配、模块划分
+    ├── usage.md                      recipe JSON schema、CLI 参数
+    ├── reports.md                    输出文件结构
+    ├── wpf-editor.md                 WPF 配方编辑器使用
+    ├── color-science.md              Δu'v' / ΔE2000 / gamma / 色温 背景
+    └── recipes.md                    recipe 写作指南 + 3 套典型配方
 ```
 
-## 3. 构建与测试
+## 文档导航
 
-```powershell
-dotnet build ColorMeasure.sln -c Debug
-dotnet test  ColorMeasure.sln -c Debug
-```
-
-需要先安装的 NuGet 包（首次 `dotnet build` 会自动还原）：
-`CsvHelper`, `ClosedXML`, `QuestPDF`, `SkiaSharp`, `Serilog`, `xUnit`, `System.CommandLine`。
-
-## 4. 运行
-
-最小可执行路径在：
-
-```
-src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows\color-measure.exe
-```
-
-直接调用：
-
-```powershell
-# 推荐方式：dotnet run（自动 build）
-dotnet run --project src\ColorMeasure.Host.Cli -- `
-  --plan recipes\color-space-coverage-srgb.json `
-  --out runs\demo
-
-# 或先 build 再走裸 exe（产物路径稳定，避免 dotnet run 找不到 AnyCPU 输出）
-& src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows\color-measure.exe `
-  --plan recipes\color-space-coverage-srgb.json `
-  --out runs\demo
-
-# 只解析计划、不连硬件（冒烟测试 recipe JSON）
-dotnet run --project src\ColorMeasure.Host.Cli -- `
-  --plan recipes\color-space-coverage-srgb.json --dry-run
-
-# 把当前会话的输出目录加进 PATH，之后可以裸调 color-measure
-$env:PATH += ";$PWD\src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows"
-color-measure --plan recipes\color-space-coverage-srgb.json --dry-run
-```
-
-### 4.1 CLI 选项
-
-```
---plan <path>     测试计划 JSON（必填）
---out <dir>       输出目录（默认 runs\<时间戳>）
---connect <mode>  auto|usb（默认 auto，目前等价于 usb）
---dry-run         只解析 plan，不连硬件
---version
--? | -h | --help
-```
-
-退出码：`0` 成功；`1` 运行失败（错误码会出现在日志里：`NO_SAMPLES`、`MISSING_PRIMARIES`、`SDK_*` 等）。
-
-## 5. 输出（默认在 `<--out>` 目录）
-
-| 文件 | 内容 | 备注 |
-|---|---|---|
-| `samples.csv` | 原始样本：patch / x / y / Lv / X / Y / Z / duv / Tcp / probe SN / time | CsvHelper |
-| `summary.xlsx` | samples + gamut 两张表 | ClosedXML，**当前不含图**，只是数据 |
-| `report.pdf` | 封面 + CIE 1931 xy 图（目标实线、实测虚线、独立配色）+ 分析表 | QuestPDF + SkiaSharp |
-| `report.html` | **自包含交互式报告**，浏览器打开即可 | 见 [`docs/reports.md`](docs/reports.md) |
-
-## 6. 配方（recipe）JSON 最小骨架
-
-```json
-{
-  "name": "MyPlan",
-  "connect": "auto",
-  "calibrateBeforeStart": true,
-  "settleMs": 1500,
-  "targets": ["sRGB", "DCI-P3", "AdobeRGB", "Rec.2020"],
-  "patches": [
-    { "id": "white", "hex": "#FFFFFF", "avg": 8 },
-    { "id": "red",   "hex": "#FF0000", "avg": 8 },
-    { "id": "green", "hex": "#00FF00", "avg": 8 },
-    { "id": "blue",  "hex": "#0000FF", "avg": 8 }
-  ],
-  "pass": { "max_delta_e2000": 5.0, "min_coverage": 0.90 }
-}
-```
-
-完整字段说明见 [`docs/architecture.md`](docs/architecture.md) §5.1。
-
-## 7. 故障排查速查
-
-| 现象 | 排查 |
+| 文档 | 内容 |
 |---|---|
-| `Could not load file or assembly 'CASDK2Net.dll'` | 用裸 exe 跑（`bin\x64\Debug\net10.0-windows\color-measure.exe`），或在 `src\ColorMeasure.Host.Cli\ColorMeasure.Host.Cli.csproj` 检查 `<None Include="..\..\native\*.dll">` 是否齐 |
-| `rc=426 --Measurement fail.` | 探针与显示器未对准 / CA-S40 主程序占用中 / 显示器色彩增强未关 / Windows HDR/护眼色温开启 |
-| `[NO_SAMPLES]` 退出码 1 | 全部测量失败。先做：单个白板测试 + 关闭显示器色彩增强 + 确认探针 USB 灯稳定 |
-| `[MISSING_PRIMARIES] red, green, blue, white` | plan 里至少缺一个基本色 patch；检查 recipe 的 `patches` 数组 |
-| `Coverage` 全是 0 | 探针测到的是环境光，不是 patch；屏幕未被 GPU palette 窗口覆盖、或者探针位置不对 |
+| [`docs/architecture.md`](docs/architecture.md) | Clean Architecture 分层、SDK 适配、模块划分 |
+| [`docs/usage.md`](docs/usage.md) | recipe JSON schema + CLI 全部参数 |
+| [`docs/reports.md`](docs/reports.md) | CSV / XLSX / PDF / HTML 4 套输出文件结构 |
+| [`docs/wpf-editor.md`](docs/wpf-editor.md) | WPF 配方编辑器（v1）使用 |
+| [`docs/color-science.md`](docs/color-science.md) | Δu'v'、ΔE2000、gamma、色温概念与判读 |
+| [`docs/recipes.md`](docs/recipes.md) | 3 套典型配方 + 写作技巧 |
 
-## 8. 文档
+## 关键术语
 
-- [`docs/architecture.md`](docs/architecture.md) — 架构设计、SDK 适配、模块划分、技术选型
-- [`docs/usage.md`](docs/usage.md) — 测试计划 JSON 完整字段、CLI 进阶用法
-- [`docs/reports.md`](docs/reports.md) — 报告文件结构 + HTML 交互功能
+- **Coverage**：实测三原色三角形面积 / 目标色域三角形面积，clamp 到 1.0
+- **Max ΔE2000**：实测 R / G / B 三个原色到标准原色的 CIEDE2000 最大值
+- **Δu'v' (W)**：CIE 1976 UCS 中实测白点到 D65 (u'=0.1978, v'=0.4683) 的距离
+- **Gamma**：log-log 线性拟合 Y = a·V^γ 的斜率；理想 sRGB ≈ 2.2，BT.1886 ≈ 2.4
+
+详见 [docs/color-science.md](docs/color-science.md)。
+
+## 现状
+
+- 0.1+：色域覆盖 + ΔE2000 + Δu'v' + Gamma
+- 1.0+（路线图）：Flicker、JSD/CI 校准、外部 Pattern Generator、ICC profile 输出、GUI 内直接运行测量
+
+## 致谢
+
+CIE 1931 / 1976 UCS 标准源自 CIE Publication 015。`cie1931xyz.png` 参考图由 Zhihu 公开资源。
+
+## 许可
+
+工具代码：MIT。CA-SDK2 native DLL：vendor 自 Konica Minolta，按其 EULA 使用。
