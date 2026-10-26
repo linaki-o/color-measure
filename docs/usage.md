@@ -32,6 +32,16 @@ src\ColorMeasure.Host.Wpf\bin\x64\Debug\net10.0-windows\ColorMeasure.Host.Wpf.ex
 
 详见 [`docs/wpf-editor.md`](wpf-editor.md)。
 
+### 输出目录的差异（易踩坑）
+
+| 你执行的命令 | 输出目录 |
+|---|---|
+| `dotnet build ColorMeasure.sln -c Debug` | `src\ColorMeasure.Host.Cli\bin\x64\Debug\net10.0-windows\`（solution 配置是 `Debug\|x64`） |
+| `dotnet run --project src\ColorMeasure.Host.Cli` | `src\ColorMeasure.Host.Cli\bin\Debug\net10.0-windows\`（单项目默认 AnyCPU） |
+
+两个目录**都**能正常跑（6 个 native DLL 都拷齐了），但**内容不是同一份**——混用会拿到旧构建。
+**建议统一用 `dotnet run --project`**，路径由 SDK 管理。
+
 ## TestPlan 字段
 
 完整示例见 `recipes/color-space-coverage-srgb.json`。

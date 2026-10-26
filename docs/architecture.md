@@ -44,6 +44,16 @@ CA-410 SDK 在 `C:\Program Files (x86)\KONICA MINOLTA\CA-S40\CA-SDK2` 下提供�
 | 日志 / 配置 | Serilog + Microsoft.Extensions.Hosting |
 | 测试 | xUnit + FluentAssertions |
 
+### 运行时与 SDK 约束
+
+| 约束 | 说明 |
+|---|---|
+| **SDK 版本** | `global.json` 钉 `10.0.302` + `rollForward: latestFeature` → **必须 .NET 10 SDK**。.NET 8/9 SDK 会被直接拒绝（"指定的 SDK 版本找不到"） |
+| **Runtime 依赖** | CLI 与 WPF 都是 `net10.0-windows` + `UseWPF` → 运行期需要 **.NET 10 Desktop Runtime**（不是普通 .NET Runtime），因为 GPU 全屏色板用 WPF 实现。`runtimeconfig.json` 同时声明 `Microsoft.NETCore.App` 和 `Microsoft.WindowsDesktop.App` |
+| **自包含发布** | `dotnet publish src\ColorMeasure.Host.Cli -c Release -r win-x64 --self-contained true` 可绕开 Desktop Runtime 依赖 |
+| **native 依赖** | 6 个 CA-SDK2 DLL 已 vendor 在 `native/`，构建时自动复制到输出目录。CA-410 SDK 本身仍是**运行时必需**（提供 USB 驱动 `Driver\KMMIUSB.INF` 让 Windows 能枚举到探针，以及 `CA200Srvr.dll` COM server） |
+| **平台** | x64 only（`Platforms=x64` + `PlatformTarget=x64`）。native DLL 无 x86/ARM64 版本 |
+
 ## 4. Clean Architecture 分层
 
 ```
