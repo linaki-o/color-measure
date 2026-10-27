@@ -77,6 +77,7 @@ src\ColorMeasure.Host.Wpf\bin\x64\Debug\net10.0-windows\ColorMeasure.Host.Wpf.ex
 | 连接 | 当前 v0 只识别 `auto` / `usb` |
 | 测量前调零 | 勾上 → 跑 patch 前先调零 |
 | SettleMs | 每 patch 切换后等待时间，ms |
+| **显示器信号链路（声明）** | 下拉框 `unknown` / `sdr` / `hdr`。写进 recipe 的 `displayState` 字段，供报告记录与"信号链路体检"交叉校验。见 [`docs/color-science.md#信号链路体检link-health`](color-science.md#信号链路体检link-health) |
 | 目标色域 | 4 个复选框，可任意组合；空选 = 跑默认 sRGB（v1 提示） |
 | Max ΔE2000 | 通过条件上限，留空 = 不参与判定 |
 | Min coverage | 通过条件下限（0..1），留空 = 不参与判定 |
@@ -89,12 +90,13 @@ src\ColorMeasure.Host.Wpf\bin\x64\Debug\net10.0-windows\ColorMeasure.Host.Wpf.ex
 
 `RecipeSerializer` 写出的 JSON 与 CLI 的 `TestPlanParser` 用**同一份 schema**：
 
-- `name` / `connect` / `calibrateBeforeStart` / `settleMs` / `targets` / `patches` / `pass`
+- `name` / `connect` / `calibrateBeforeStart` / `settleMs` / `targets` / `patches` / `pass` / `displayState`
 - 字段命名：snake_case via `JsonNamingPolicy.SnakeCaseLower`
 - patch 字段：`id` / `hex` / `avg` / `label`
 - pass 字段：`max_delta_e2000` / `min_coverage`
+- `displayState` 写成 `sdr` / `hdr` / `unknown`
 - `pass` 整段缺省时**不写**（与 CLI 行为一致）
-- 缺 `pass` key 的旧 recipe：加载时回退到 max=5.0、min=0.90
+- 缺 `pass` / `displayState` key 的旧 recipe：加载时回退到 max=5.0、min=0.90、unknown
 
 往返测试见 `tests/ColorMeasure.Host.Wpf.Tests/RecipeSerializerTests.cs`（4 case）。
 

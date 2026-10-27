@@ -1,3 +1,5 @@
+using ColorMeasure.Domain.Entities;
+
 namespace ColorMeasure.Application.Plans;
 
 public sealed record TestPlan(
@@ -7,7 +9,8 @@ public sealed record TestPlan(
     int SettleMs,
     IReadOnlyList<PatchEntry> Patches,
     IReadOnlyList<string> Targets,
-    PassCriteria Pass);
+    PassCriteria Pass,
+    DisplayState DisplayState = DisplayState.Unknown);
 
 public sealed record PatchEntry(string Id, string Hex, int Avg, string? Label);
 

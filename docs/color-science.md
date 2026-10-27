@@ -147,6 +147,90 @@ R² < 0.95 表明显示器 OETF 不是单纯的 power law（通常是有局部 s
 
 **只用 Δu'v' (W) 诊断色温**——`Max ΔE2000` 和 `Coverage` 看不出色温问题。
 
+## 信号链路体检（Link Health）
+
+> 工具会自动检查"本次测到的数字是否还代表面板的原生色彩特性"。
+
+### 为什么需要它
+
+GPU palette 送出的是 **8-bit sRGB (BT.709) SDR** 信号（`Color.FromRgb(r,g,b)`，WPF 窗口，无 HDR 元数据）。
+当 Windows HDR 或显示器 OSD 的 HDR 模式开启时，这个信号必须经过 **SDR→HDR 转换**
+（OS/ICC 色彩管理 + gamut mapping + tone mapping）才能驱动面板。这一层转换
+**既不保色度也不保 gamma**，所以面板显示的根本不是我们要求的颜色。
+
+实测对比（同一台显示器，同一支 CA-410）：
+
+| 指标 | SDR 直通 | HDR 开启 |
+|---|---|---|
+| sRGB Coverage | ~100% | 86.4% |
+| DCI-P3 Coverage | 91.2% | 63.7% |
+| Rec.2020 Coverage | 65.5% | 45.7% |
+| Max ΔE2000 (sRGB) | 2.81 | 4.04 |
+| 核心区 γ | 2.15 | 1.91 |
+| 全量程 R² | 0.9999 | 0.9866 |
+| 黑场 | 0.068 cd/m² | 0.339 cd/m² |
+| 原色向白点位移 | +0.01% | **+5.92%（三原色同向）** |
+
+**Coverage 退化幅度与目标色域宽度成正比**（越宽的色域被压得越狠），是 gamut mapping 的典型特征。
+
+### 5 个检测信号
+
+| ID | 信号 | 含义 | 警告阈值 | 严重阈值 |
+|---|---|---|---|---|
+| `saturation-compression` | 原色饱和度压缩 | 三个原色**同向**朝白点移动的行程均值 | > 2.5% | > 5% |
+| `midtone-gamma` | 核心区 Gamma 偏离 2.2 | V∈[0.25,0.75] 区间的拟合 γ 与 2.2 的差 | > 0.15 | > 0.45 |
+| `black-lift` | 黑场抬升 | 输入 0 时的黑场亮度 | > 0.5 cd/m² | > 1.5 cd/m² |
+| `gamma-fit-r2` | Gamma 拟合优度 | 全量程 log-log 拟合 R² | < 0.99 | < 0.95 |
+| `white-point` | 白点偏离 D65 | Δu'v'(W) | > 0.012 | > 0.025 |
+
+**关键设计：方向感知。** `saturation-compression` 只在三个原色**同向朝白点**移动时才算异常。
+如果原色是**远离**白点（负值），那是显示器原生色域比 sRGB 宽（宽色域显示器的正常特性），
+**不算链路问题**，只作为参考信息列出。
+
+### 判定规则
+
+| 条件 | 判定 |
+|---|---|
+| 任一信号达到"严重" | `NonSdrLikely` —— 数据很可能不代表面板原生值 |
+| ≥2 个警告 | `NonSdrLikely` |
+| 恰好 1 个警告 | `Suspicious` —— 值得看一眼，也可能是显示器自身的真实特性 |
+| 无警告 | `SdrLikely` —— 数据可作为原生色彩特性的参考 |
+| 缺灰阶 ramp 或缺原色测量 | `Unknown` —— 数据不足 |
+
+如果**声明与实测矛盾**（配方写 `sdr` 但判定 `NonSdrLikely`，或反过来），摘要里会额外高亮提示。
+
+### 阈值是怎么定的
+
+用同一台显示器的 13 组真实测量（跨 SDR / HDR / 非 sRGB 模式）标定：
+
+| 数据集 | 判定 | 触发信号 |
+|---|---|---|
+| 干净 SDR × 4 | `SdrLikely` | — |
+| HDR × 2 | `NonSdrLikely` | `saturation-compression` Critical（5.9% / 10.7%） |
+| 黑场抬升 + γ 异常 | `NonSdrLikely` | `black-lift` Critical |
+| 宽色域 / 非 sRGB 模式 | `Suspicious` | `midtone-gamma` Warning |
+
+复现脚本：`scripts/calibrate-link-health.ps1`（需要 `runs/` 里有历史测量）。
+
+### 怎么用
+
+```powershell
+# 1) 配方里声明当前状态（可被 CLI 覆盖）
+color-measure --plan my.json --out runs\x
+color-measure --plan my.json --out runs\x --display-state hdr
+
+# 2) 看 CLI 输出的体检结论
+#    [INF] Signal chain: declared=Hdr verdict=NonSdrLikely
+#    [ERR] Signal chain: 有 3 项指标偏离 SDR 基准...
+
+# 3) 看 HTML 报告顶部的「信号链路体检」卡片（红/黄/绿边框 + 逐项信号）
+
+# 4) 结论为 NonSdrLikely 时：本次色域/亮度数据不能作为面板原生值。
+#    关掉 Windows HDR + 显示器 OSD HDR 后重测。
+```
+
+实现：`src/ColorMeasure.Application/Analysis/LinkHealthAnalyzer.cs`
+
 ## CIE 1931 / 1976 UCS 的来源
 
 - **CIE 1931 (x, y)**：CIE Proceedings (1928), 1931。MacAdam 1942 椭圆指出其不均匀性（20:1 椭圆大小比）

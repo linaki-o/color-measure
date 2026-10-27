@@ -36,14 +36,31 @@ QuestPDF 生成，A4 横向布局：
 | 区域 | 内容 |
 |---|---|
 | 封面 | 计划名 + 探针 SN + 开始时间 |
+| **信号链路体检** | 声明状态 vs 实测判定 + 5 个信号的逐项数值与阈值（严重项会列在正文）|
 | CIE 1931 xy 图 | SkiaSharp 绘制：连续色彩场（每个 0.8% 栅格按 sRGB 等价值填色）+ spectral locus + 460-620nm 波长刻度 + 每个 target 实线轮廓（R/G/B primary 渐变填充）+ 同色暗 30% 虚线（实测）+ 独立配色（sRGB=蓝 / DCI-P3=绿 / AdobeRGB=橙 / Rec.2020=红）|
-| Gamma 曲线 | γ / a / R² / 黑场 / 白场 / 样本数 + log-log SVG 图（γ=1.8/2.4 参考线 + 测量点）|
+| Gamma 曲线 | γ / 核心区 γ / a / R² / 黑场 / 白场 / 样本数 + log-log SVG 图（γ=1.8/2.4 参考线 + 测量点）|
 | 色域分析表 | target / coverage / Δu'v' (W) / max dE2000 / R/G/B dE2000 / Result |
 | 样本表 | patch / x / y / Lv / Tcp |
 
 ## `report.html`（推荐先看这个）
 
 单文件自包含（约 17 KB），**无 CDN / 无外部请求**——双击或邮件附件都能打开。
+
+### 顶部「信号链路体检」卡片
+
+如果配方里声明了 `displayState`（或用了 `--display-state`），报告会显示一张
+状态卡片：
+
+| 边框色 | 判定 | 含义 |
+|---|---|---|
+| 绿 | `SdrLikely` | 数据可作为面板原生色彩特性的参考 |
+| 黄 | `Suspicious` | 有 1 项指标偏离，可能是显示器自身特性 |
+| 红 | `NonSdrLikely` | 数据很可能不代表面板原生值（典型：Windows HDR 开着） |
+| 灰 | `Unknown` | 数据不足（没有灰阶 ramp 或没有原色测量） |
+
+卡片内逐项列出 5 个信号（黑场抬升 / 核心区 γ / 原色饱和度压缩 / γ 拟合 R² / 白点 Δu'v'），
+每项带实测值与阈值，图标 `·`=参考 `▲`=警告 `✖`=严重。
+详见 [`docs/color-science.md#信号链路体检link-health`](color-science.md#信号链路体检link-health)。
 
 可交互元素：
 
@@ -99,8 +116,13 @@ QuestPDF 生成，A4 横向布局：
 | CSV / XLSX / HTML | `coverage` | 实测三原色面积 / 目标面积，0..1 | [color-science.md#coverage](color-science.md#coverage) |
 | CSV / XLSX / HTML | `max_dE2000` | R/G/B 中 ΔE2000 最大值 | [color-science.md#dE2000](color-science.md#dE2000) |
 | CSV / XLSX / HTML | `delta_uv_W` | 实测白点到 D65 的 u'v' 距离 | [color-science.md#duvw](color-science.md#duvw) |
-| HTML（Gamma 卡） | `gamma` / `scaleA` / `RSquared` | Y=a·V^γ 三参数 + 拟合优度 | [color-science.md#gamma](color-science.md#gamma) |
+| HTML（Gamma 卡） | `gamma` / `midtoneGamma` / `scaleA` / `RSquared` | Y=a·V^γ 三参数 + 拟合优度 | [color-science.md#gamma](color-science.md#gamma) |
+| HTML（体检卡） | 5 个链路信号 | 判断本次数据是否代表面板原生值 | [color-science.md#信号链路体检link-health](color-science.md#信号链路体检link-health) |
 | HTML（样本详情） | `triX/Y/Z` | 原始 CIE XYZ 三刺激值 | — |
+
+> **CSV 里的非有限值**：高饱和原色的 `duv` 与 `Tcp` 在数学上未定义，SDK 会返回
+> `Infinity`。CSV 现在把这类值写成**空单元格**（不是 `Infinity` 字符串），
+> 保证 Excel / pandas 能直接导入。
 
 ## 报告存证建议
 

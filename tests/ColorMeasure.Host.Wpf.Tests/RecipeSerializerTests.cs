@@ -47,7 +47,7 @@ public class RecipeSerializerTests
     }
 
     [Fact]
-    public void RoundTrip_DefaultsAreWrittenAndReadBack()
+    public void RoundTrip_EmptyRecipe_AppliesDefaults()
     {
         // Empty Recipe should still produce a valid JSON that round-trips.
         var original = new Recipe();
@@ -60,6 +60,35 @@ public class RecipeSerializerTests
         roundTripped.Patches.Should().BeEmpty();
         roundTripped.MaxDeltaE2000.Should().Be(5.0);
         roundTripped.MinCoverage.Should().Be(0.90);
+        roundTripped.DisplayState.Should().Be("unknown");
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesDisplayState()
+    {
+        var original = new Recipe { Name = "hdr", DisplayState = "hdr" };
+        var json = RecipeSerializer.Serialize(original);
+        json.Should().Contain("\"displayState\": \"hdr\"");
+
+        var roundTripped = RecipeSerializer.Deserialize(json);
+        roundTripped.DisplayState.Should().Be("hdr");
+    }
+
+    [Fact]
+    public void Load_LegacyRecipeWithoutDisplayState_DefaultsToUnknown()
+    {
+        const string legacy = """
+        {
+          "name": "legacy",
+          "connect": "auto",
+          "calibrateBeforeStart": true,
+          "settleMs": 1500,
+          "targets": ["sRGB"],
+          "patches": [{"id":"white","hex":"#FFFFFF","avg":8}]
+        }
+        """;
+        var r = RecipeSerializer.Deserialize(legacy);
+        r.DisplayState.Should().Be("unknown");
     }
 
     [Fact]

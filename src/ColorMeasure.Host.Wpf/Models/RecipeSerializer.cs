@@ -50,6 +50,7 @@ public static class RecipeSerializer
                 ["avg"] = p.Avg,
                 ["label"] = p.Label,
             }).ToArray()),
+            ["displayState"] = string.IsNullOrWhiteSpace(r.DisplayState) ? "unknown" : r.DisplayState,
         };
         if (r.MaxDeltaE2000 > 0 || r.MinCoverage > 0)
         {
@@ -93,6 +94,7 @@ public static class RecipeSerializer
             r.MaxDeltaE2000 = ps["max_delta_e2000"]?.GetValue<double?>();
             r.MinCoverage = ps["min_coverage"]?.GetValue<double?>();
         }
+        r.DisplayState = obj["displayState"]?.GetValue<string>() ?? "unknown";
         return r;
     }
 }

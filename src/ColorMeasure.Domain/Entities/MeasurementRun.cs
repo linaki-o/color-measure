@@ -27,4 +27,8 @@ public sealed record MeasurementRun(
     string ProbeSerialNo,
     IReadOnlyList<ColorSample> Samples,
     IReadOnlyList<GamutReport> GamutReports,
-    GammaReport? Gamma = null);
+    GammaReport? Gamma = null,
+    // What the operator declared about the display's signal chain (SDR / HDR).
+    DisplayState DeclaredDisplayState = DisplayState.Unknown,
+    // Automated signal-chain health check. Null when the plan had no gray ramp.
+    LinkHealthReport? LinkHealth = null);

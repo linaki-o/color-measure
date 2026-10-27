@@ -70,6 +70,12 @@ public static class GammaAnalyzer
 
         var (gamma, lnA, r2) = LinearFit(xs, ys);
 
+        // Core ("midtone") fit over V in [0.25, 0.75] only. The full-range fit is dragged
+        // down by the sRGB linear toe (V < 0.04045) and by any display-side highlight
+        // compression, so the core fit is a much cleaner probe of the effective EOTF —
+        // this is what the link-health check compares against 2.2.
+        var (midGamma, midR2) = FitCoreRange(sorted, whiteLv);
+
         return Result<GammaReport>.Ok(new GammaReport(
             Gamma: gamma,
             ScaleA: Math.Exp(lnA),
@@ -77,7 +83,34 @@ public static class GammaAnalyzer
             BlackLevelCdM2: blackLv,
             WhiteLevelCdM2: whiteLv,
             SampleCount: sorted.Count,
+            MidtoneGamma: midGamma,
+            MidtoneRSquared: midR2,
             Curve: points));
+    }
+
+    /// <summary>
+    /// Fits the power law over the core midtone range only (V in [0.25, 0.75]),
+    /// skipping the sRGB linear toe and the near-white region. Returns
+    /// (slope, r2), or (null, null) if fewer than 3 usable points are in range.
+    /// </summary>
+    private static (double? Slope, double? R2) FitCoreRange(
+        List<(double Input, double Luminance)> sorted, double whiteLv)
+    {
+        const double coreLo = 0.25, coreHi = 0.75;
+        var xs = new List<double>();
+        var ys = new List<double>();
+        foreach (var g in sorted)
+        {
+            if (g.Input < coreLo || g.Input > coreHi) continue;
+            if (g.Input <= 0 || g.Luminance <= 0 || whiteLv <= 0) continue;
+            xs.Add(Math.Log(g.Input));
+            ys.Add(Math.Log(g.Luminance));
+        }
+        if (xs.Count < 3) return (null, null);
+
+        var (slope, _, r2) = LinearFit(xs, ys);
+        if (!IsFinite(slope) || !IsFinite(r2)) return (null, null);
+        return (slope, r2);
     }
 
     /// <summary>

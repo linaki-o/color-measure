@@ -11,10 +11,20 @@ namespace ColorMeasure.Application.Plans;
 /// </summary>
 public static class TestPlanParser
 {
+    /// <summary>
+    /// NOTE: do NOT add a global <c>PropertyNamingPolicy</c> here.
+    /// The recipe schema is camelCase at the top level ("calibrateBeforeStart",
+    /// "settleMs", "displayState") and snake_case only inside the "pass" block
+    /// ("max_delta_e2000", "min_coverage", which carry explicit JsonPropertyName
+    /// attributes). A global SnakeCaseLower policy rewrites the *expected* key of
+    /// every camelCase property to snake_case, so those keys silently fail to match
+    /// and deserialise as their default — which previously meant
+    /// "calibrateBeforeStart": true never enabled ZeroCal and "settleMs" was
+    /// always ignored. Every key is now spelled out explicitly instead.
+    /// </summary>
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
     };
@@ -63,6 +73,8 @@ public static class TestPlanParser
             ? new PassCriteria(null, null)
             : new PassCriteria(dto.Pass.MaxDeltaE2000, dto.Pass.MinCoverage);
 
+        var displayState = ParseDisplayState(dto.DisplayState);
+
         return Result<TestPlan>.Ok(new TestPlan(
             Name: dto.Name,
             ConnectMode: string.IsNullOrWhiteSpace(dto.Connect) ? "auto" : dto.Connect!,
@@ -70,26 +82,46 @@ public static class TestPlanParser
             SettleMs: dto.SettleMs <= 0 ? 1500 : dto.SettleMs,
             Patches: patches,
             Targets: targets,
-            Pass: pass));
+            Pass: pass,
+            DisplayState: displayState));
+    }
+
+    /// <summary>
+    /// Parses the optional "displayState" field: "sdr" | "hdr" | "unknown".
+    /// Unknown / unrecognised values degrade to <see cref="DisplayState.Unknown"/>
+    /// rather than failing the plan — a stale recipe should still run.
+    /// </summary>
+    private static DisplayState ParseDisplayState(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return DisplayState.Unknown;
+        return raw.Trim().ToLowerInvariant() switch
+        {
+            "sdr" => DisplayState.Sdr,
+            "hdr" => DisplayState.Hdr,
+            _ => DisplayState.Unknown,
+        };
     }
 
     public sealed class PlanDto
     {
-        public string? Name { get; set; }
-        public string? Connect { get; set; }
-        public bool CalibrateBeforeStart { get; set; }
-        public int SettleMs { get; set; }
-        public List<PatchDto>? Patches { get; set; }
-        public List<string>? Targets { get; set; }
-        public PassDto? Pass { get; set; }
+        [JsonPropertyName("name")] public string? Name { get; set; }
+        [JsonPropertyName("connect")] public string? Connect { get; set; }
+        [JsonPropertyName("calibrateBeforeStart")] public bool CalibrateBeforeStart { get; set; }
+        [JsonPropertyName("settleMs")] public int SettleMs { get; set; }
+        [JsonPropertyName("patches")] public List<PatchDto>? Patches { get; set; }
+        [JsonPropertyName("targets")] public List<string>? Targets { get; set; }
+        [JsonPropertyName("pass")] public PassDto? Pass { get; set; }
+
+        /// <summary>"sdr" | "hdr" | "unknown" — what the operator declares about the display state.</summary>
+        [JsonPropertyName("displayState")] public string? DisplayState { get; set; }
     }
 
     public sealed class PatchDto
     {
-        public string? Id { get; set; }
-        public string? Hex { get; set; }
-        public int Avg { get; set; }
-        public string? Label { get; set; }
+        [JsonPropertyName("id")] public string? Id { get; set; }
+        [JsonPropertyName("hex")] public string? Hex { get; set; }
+        [JsonPropertyName("avg")] public int Avg { get; set; }
+        [JsonPropertyName("label")] public string? Label { get; set; }
     }
 
     public sealed class PassDto

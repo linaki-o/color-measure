@@ -127,6 +127,12 @@
                     <TextBlock Text="每 patch 等待时间 (ms)" Style="{StaticResource LabelStyle}" />
                     <TextBox  Text="{Binding SettleMs, UpdateSourceTrigger=PropertyChanged}" />
 
+                    <TextBlock Text="显示器信号链路（声明）" Style="{StaticResource LabelStyle}" />
+                    <ComboBox ItemsSource="{Binding AllDisplayStates}"
+                              SelectedItem="{Binding DisplayState, Mode=TwoWay}" />
+                    <TextBlock Text="sdr = Windows HDR 与显示器 OSD 的 HDR 均关闭；hdr = 至少有一处开启。&#10;该值会写入报告，供结果横向对比与信号链路体检交叉校验。"
+                               Foreground="#888" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+
                     <Separator Margin="0,16,0,8" />
                     <TextBlock Text="目标色域" FontSize="14" FontWeight="Bold" Margin="0,0,0,6" />
                     <ItemsControl ItemsSource="{Binding AllTargets}">

@@ -8,6 +8,7 @@ color-measure [options]
   --plan <plan>      测试计划 JSON（必填）
   --out <dir>         输出目录，默认 runs\<yyyyMMdd-HHmmss>
   --connect <mode>    auto|usb（默认 auto）
+  --display-state <s> 显示器信号链路声明：sdr|hdr（覆盖配方里的同名字段；留空 = 用配方值）
   --dry-run           只解析 plan，不连硬件
   --version
   -? | -h | --help
@@ -55,6 +56,7 @@ src\ColorMeasure.Host.Wpf\bin\x64\Debug\net10.0-windows\ColorMeasure.Host.Wpf.ex
 | `targets` | string[] | 否 | 目标色域数组，默认 `["sRGB"]`；支持 `sRGB` / `DCI-P3` / `AdobeRGB` / `Rec.2020` |
 | `patches` | object[] | 是 | 至少包含 `id` 为 `red` / `green` / `blue` / `white` 的四个 patch；想做 gamma 加 ≥3 个 R=G=B 灰阶 |
 | `pass` | object | 否 | 通过条件：`max_delta_e2000` + `min_coverage`，缺省则该项不参与判定 |
+| `displayState` | string | 否 | 显示器信号链路声明：`sdr` / `hdr` / `unknown`（默认 `unknown`）。写入报告供横向对比，也用于与"信号链路体检"结论交叉校验 |
 
 ### Patch 字段
 
@@ -77,7 +79,21 @@ src\ColorMeasure.Host.Wpf\bin\x64\Debug\net10.0-windows\ColorMeasure.Host.Wpf.ex
 - `targets` 留空 → 默认 `["sRGB"]`
 - `pass` 整段留空 → max=5.0 dE / min=0.90 coverage 都不会被强制检查（仅作为"显示参考"显示在报告中）
 - 缺 `pass` key 的旧 recipe → 加载时同样回退到上述默认
+- 缺 `displayState` key 的旧 recipe → 加载为 `unknown`（不会让计划失败）
+- `displayState` 值不认识（如 `"banana"`）→ 降级为 `unknown`，不报错
 - WPF 编辑器保存时：两个阈值都缺省时**不写** `pass` 块（与 CLI 默认行为一致）
+
+### 顶层键名大小写（重要）
+
+顶层键是 **camelCase**（`calibrateBeforeStart` / `settleMs` / `displayState`），
+只有 `pass` 块内部是 snake_case（`max_delta_e2000` / `min_coverage`）。
+
+早期版本的 parser 挂了全局 `JsonNamingPolicy.SnakeCaseLower`，会把 camelCase 属性的
+**期望键名**改写成 snake_case，导致 `calibrateBeforeStart` / `settleMs` 静默失配并取默认值
+（也就是 `calibrateBeforeStart: true` 从来没生效过，ZeroCal 一直没跑）。现已改为逐个键显式声明。
+
+> 旧 recipe 里若把顶层键写成 snake_case（`calibrate_before_start`），**不会**被识别。
+> 如需修正，把键名改回 camelCase 即可。
 
 ## 完整示例
 

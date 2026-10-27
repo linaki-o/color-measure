@@ -79,6 +79,7 @@ public sealed class HtmlReportSink : IReportSink
                 gamma = San(run.Gamma.Gamma),
                 scaleA = San(run.Gamma.ScaleA),
                 rSquared = San(run.Gamma.RSquared),
+                midtoneGamma = San(run.Gamma.MidtoneGamma),
                 blackLevelCdM2 = San(run.Gamma.BlackLevelCdM2),
                 whiteLevelCdM2 = San(run.Gamma.WhiteLevelCdM2),
                 sampleCount = run.Gamma.SampleCount,
@@ -88,6 +89,22 @@ public sealed class HtmlReportSink : IReportSink
                     luminanceNormalized = San(p.LuminanceNormalized),
                 }).ToList(),
             },
+            linkHealth = run.LinkHealth is null ? null : new LinkHealthData
+            {
+                verdict = run.LinkHealth.Verdict.ToString(),
+                summary = run.LinkHealth.Summary,
+                declaredState = run.LinkHealth.DeclaredState.ToString(),
+                signals = run.LinkHealth.Signals.Select(s => new LinkSignalData
+                {
+                    id = s.Id,
+                    title = s.Title,
+                    detail = s.Detail,
+                    value = San(s.Value),
+                    threshold = San(s.Threshold),
+                    severity = s.Severity.ToString(),
+                }).ToList(),
+            },
+            declaredDisplayState = run.DeclaredDisplayState.ToString(),
         };
         var json = JsonSerializer.Serialize(data, JsonOpts);
 
@@ -194,6 +211,42 @@ svg#diagram {
 .gamma-stats .gl-pass { color: var(--pass); font-weight: 600; font-size: 12px; }
 .gamma-stats .gl-cov { color: #b5851a; font-weight: 600; font-size: 12px; }
 .gamma-stats .gl-fail { color: var(--fail); font-weight: 600; font-size: 12px; }
+.link-health {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  background: var(--panel);
+}
+.link-health.ok      { border-left-color: #1a7f37; background: #f2fbf4; }
+.link-health.warn    { border-left-color: #b5851a; background: #fffbef; }
+.link-health.crit    { border-left-color: #cf222e; background: #fff5f5; }
+.link-health.unknown { border-left-color: #8b949e; background: #f6f8fa; }
+.link-health .lh-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.link-health .lh-verdict {
+  font-weight: 700; font-size: 13px; padding: 2px 10px; border-radius: 12px; color: #fff;
+}
+.link-health.ok .lh-verdict      { background: #1a7f37; }
+.link-health.warn .lh-verdict    { background: #b5851a; }
+.link-health.crit .lh-verdict    { background: #cf222e; }
+.link-health.unknown .lh-verdict { background: #6e7781; }
+.link-health .lh-declared { font-size: 12px; color: var(--muted); }
+.link-health .lh-summary { margin: 8px 0 0 0; font-size: 13px; line-height: 1.6; }
+.link-health .lh-signals { margin: 10px 0 0 0; display: flex; flex-direction: column; gap: 6px; }
+.link-health .lh-signal {
+  display: grid; grid-template-columns: 22px 150px 1fr; gap: 8px;
+  font-size: 12px; align-items: start;
+  padding: 5px 8px; border-radius: 4px; background: rgba(0,0,0,0.03);
+}
+.link-health .lh-signal .sev { font-weight: 700; text-align: center; }
+.link-health .lh-signal.critical .sev { color: var(--fail); }
+.link-health .lh-signal.warning  .sev { color: #b5851a; }
+.link-health .lh-signal.info     .sev { color: var(--muted); }
+.link-health .lh-signal .t { font-weight: 600; }
+.link-health .lh-signal .d { color: var(--muted); }
+.link-health details { margin-top: 8px; }
+.link-health summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .legend-row .item { display: inline-flex; align-items: center; gap: 6px; }
 .swatch-line { display: inline-block; width: 22px; height: 3px; vertical-align: middle; }
 .swatch-line.solid { background: #444; }
@@ -307,6 +360,11 @@ td.fail { color: var(--fail); font-weight: 600; }
       </thead>
       <tbody id="gamut-rows"></tbody>
     </table>
+  </section>
+
+  <section class="card" id="link-health-card" style="display:none">
+    <h2>信号链路体检</h2>
+    <div id="link-health"></div>
   </section>
 
   <section class="card" id="gamma-card" style="display:none">
@@ -840,7 +898,48 @@ function num(v, digits = 4) {
   buildGamutTable();
   buildSamplesTable(plot, markerGroup);
   buildGamma();
+  buildLinkHealth();
 })();
+
+function buildLinkHealth() {
+  const lh = RUN.linkHealth;
+  if (!lh) {
+    document.getElementById('link-health-card').style.display = 'none';
+    return;
+  }
+  document.getElementById('link-health-card').style.display = '';
+  const cls = {
+    'SdrLikely': 'ok',
+    'Suspicious': 'warn',
+    'NonSdrLikely': 'crit',
+    'Unknown': 'unknown',
+  }[lh.verdict] || 'unknown';
+  const label = {
+    'SdrLikely': 'SDR 直通（正常）',
+    'Suspicious': '可疑',
+    'NonSdrLikely': '非 SDR 链路（数据存疑）',
+    'Unknown': '数据不足',
+  }[lh.verdict] || lh.verdict;
+
+  const sevMark = { 'Critical': '✖', 'Warning': '▲', 'Info': '·' };
+  const sevName = { 'Critical': '严重', 'Warning': '警告', 'Info': '参考' };
+  const rows = lh.signals.map(s => `
+    <div class="lh-signal ${s.severity.toLowerCase()}">
+      <span class="sev" title="${sevName[s.severity] || s.severity}">${sevMark[s.severity] || '·'}</span>
+      <span class="t">${s.title}</span>
+      <span class="d">${s.detail}</span>
+    </div>`).join('');
+
+  document.getElementById('link-health').innerHTML = `
+    <div class="link-health ${cls}">
+      <div class="lh-head">
+        <span class="lh-verdict">${label}</span>
+        <span class="lh-declared">配方声明：${lh.declaredState} &nbsp;·&nbsp; 实测判定：${lh.verdict}</span>
+      </div>
+      <p class="lh-summary">${lh.summary}</p>
+      <div class="lh-signals">${rows}</div>
+    </div>`;
+}
 
 function buildGamma() {
   if (!RUN.gamma) {
@@ -856,6 +955,7 @@ function buildGamma() {
   document.getElementById('gamma-summary').innerHTML =
     `<div class="gamma-stats">` +
     `<div><span class="lbl">γ (gamma)</span><b>${g.gamma.toFixed(3)}</b></div>` +
+    `<div><span class="lbl">核心区 γ</span><b>${g.midtoneGamma == null ? '—' : g.midtoneGamma.toFixed(3)}</b></div>` +
     `<div><span class="lbl">a</span><b>${g.scaleA.toFixed(3)}</b></div>` +
     `<div><span class="lbl">R²</span><b>${g.rSquared.toFixed(4)}</b> ${verdict}</div>` +
     `<div><span class="lbl">黑场</span><b>${g.blackLevelCdM2.toFixed(2)}</b> cd/m²</div>` +
@@ -946,7 +1046,7 @@ function buildGamma() {
     /// come from degenerate inputs (e.g. zero-sum XYZ → NaN xy, or division by zero in ΔE2000
     /// that produces ±Infinity). The HTML page renders these as <c>—</c>.
     /// </summary>
-    private static double? San(double v) => double.IsFinite(v) ? v : null;
+    private static double? San(double? v) => v is { } x && double.IsFinite(x) ? x : null;
 
     private static string HtmlEncode(string s) => System.Net.WebUtility.HtmlEncode(s);
 
@@ -959,6 +1059,8 @@ function buildGamma() {
         public List<SampleData> samples { get; set; } = new();
         public List<GamutData> gamuts { get; set; } = new();
         public GammaData? gamma { get; set; }
+        public LinkHealthData? linkHealth { get; set; }
+        public string declaredDisplayState { get; set; } = "Unknown";
     }
 
     public sealed class GammaData
@@ -966,10 +1068,29 @@ function buildGamma() {
         public double? gamma { get; set; }
         public double? scaleA { get; set; }
         public double? rSquared { get; set; }
+        public double? midtoneGamma { get; set; }
         public double? blackLevelCdM2 { get; set; }
         public double? whiteLevelCdM2 { get; set; }
         public int sampleCount { get; set; }
         public List<GammaPointData> curve { get; set; } = new();
+    }
+
+    public sealed class LinkHealthData
+    {
+        public string verdict { get; set; } = "Unknown";
+        public string summary { get; set; } = "";
+        public string declaredState { get; set; } = "Unknown";
+        public List<LinkSignalData> signals { get; set; } = new();
+    }
+
+    public sealed class LinkSignalData
+    {
+        public string id { get; set; } = "";
+        public string title { get; set; } = "";
+        public string detail { get; set; } = "";
+        public double? value { get; set; }
+        public double? threshold { get; set; }
+        public string severity { get; set; } = "Info";
     }
 
     public sealed class GammaPointData

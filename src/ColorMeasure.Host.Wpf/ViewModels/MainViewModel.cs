@@ -65,6 +65,25 @@ public partial class MainViewModel : ObservableObject
         "sRGB", "DCI-P3", "AdobeRGB", "Rec.2020"
     };
 
+    /// <summary>Operator's declaration of the display signal chain.</summary>
+    public static IReadOnlyList<string> AllDisplayStates { get; } = new[]
+    {
+        "unknown", "sdr", "hdr"
+    };
+
+    public string DisplayState
+    {
+        get => _recipe.DisplayState;
+        set
+        {
+            var v = string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim().ToLowerInvariant();
+            if (_recipe.DisplayState == v) return;
+            _recipe.DisplayState = v;
+            OnPropertyChanged();
+            MarkDirty();
+        }
+    }
+
     public bool IsTargetSelected(string target) => _recipe.Targets.Contains(target);
     public void SetTargetSelected(string target, bool selected)
     {
@@ -230,6 +249,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SettleMs));
         OnPropertyChanged(nameof(MaxDeltaE2000));
         OnPropertyChanged(nameof(MinCoverage));
+        OnPropertyChanged(nameof(DisplayState));
         OnPropertyChanged(nameof(IsTargetSelected));
         OnPropertyChanged(nameof(StatusText));
         IsDirty = false;

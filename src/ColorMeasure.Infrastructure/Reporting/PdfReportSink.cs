@@ -35,6 +35,26 @@ public sealed class PdfReportSink(IXyDiagramRenderer diagram) : IReportSink
 
                     col.Item().Image(png);
 
+                    if (run.LinkHealth is { } health)
+                    {
+                        var color = health.Verdict switch
+                        {
+                            Domain.Entities.LinkVerdict.SdrLikely => Colors.Green.Darken2,
+                            Domain.Entities.LinkVerdict.Suspicious => Colors.Yellow.Darken2,
+                            Domain.Entities.LinkVerdict.NonSdrLikely => Colors.Red.Darken2,
+                            _ => Colors.Grey.Darken1,
+                        };
+                        col.Item().Text("Signal chain health check").FontSize(14).Bold();
+                        col.Item().Text(
+                            $"Declared: {health.DeclaredState}    Verdict: {health.Verdict}")
+                            .FontColor(color).Bold();
+                        col.Item().Text(health.Summary).FontSize(9);
+                        foreach (var s in health.Signals.Where(s => s.Severity != Domain.Entities.LinkSignalSeverity.Info))
+                        {
+                            col.Item().Text($"[{s.Severity}] {s.Title} — {s.Detail}").FontSize(8.5f);
+                        }
+                    }
+
                     if (run.Gamma is { } g)
                     {
                         col.Item().Text("Gamma transfer function").FontSize(14).Bold();

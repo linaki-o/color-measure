@@ -86,6 +86,11 @@ public sealed class MeasurementWorkflow(
             log.LogDebug("Gamma skipped: {Error}", gammaResult.Error?.Message);
         }
 
+        // Signal-chain health check: does the measured data look like it went through a
+        // clean SDR path, or was it rewritten by an SDR->HDR conversion?
+        var linkHealth = LinkHealthAnalyzer.Analyze(samples, reports, gamma, plan.DisplayState);
+        logHealth(log, plan.DisplayState, linkHealth);
+
         await display.HideAsync(ct);
 
         var run = new MeasurementRun(
@@ -95,8 +100,26 @@ public sealed class MeasurementWorkflow(
             ProbeSerialNo: probeInfo.SerialNo,
             Samples: samples,
             GamutReports: reports,
-            Gamma: gamma);
+            Gamma: gamma,
+            DeclaredDisplayState: plan.DisplayState,
+            LinkHealth: linkHealth);
 
         return Result<WorkflowResult>.Ok(new WorkflowResult(run));
+    }
+
+    private static void logHealth(
+        ILogger logger, Domain.Entities.DisplayState declared, LinkHealthReport health)
+    {
+        logger.LogInformation("Signal chain: declared={Declared} verdict={Verdict}",
+            declared, health.Verdict);
+        foreach (var s in health.Signals)
+        {
+            if (s.Severity == Domain.Entities.LinkSignalSeverity.Info) continue;
+            logger.LogWarning("  [{Severity}] {Title}: {Detail}", s.Severity, s.Title, s.Detail);
+        }
+        if (health.Verdict != Domain.Entities.LinkVerdict.SdrLikely)
+        {
+            logger.LogWarning("  {Summary}", health.Summary);
+        }
     }
 }

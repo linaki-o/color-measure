@@ -21,6 +21,12 @@ public sealed class Recipe
     public List<RecipePatch> Patches { get; set; } = new();
     public double? MaxDeltaE2000 { get; set; } = 5.0;
     public double? MinCoverage { get; set; } = 0.90;
+
+    /// <summary>
+    /// Operator's declaration of the display signal chain: "sdr" | "hdr" | "unknown".
+    /// Recorded in the report so measurements can be compared against a known baseline.
+    /// </summary>
+    public string DisplayState { get; set; } = "unknown";
 }
 
 public sealed class RecipePatch

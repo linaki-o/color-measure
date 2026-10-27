@@ -4,6 +4,7 @@ using ColorMeasure.Application.Plans;
 using ColorMeasure.Application.Workflow;
 using ColorMeasure.Domain;
 using ColorMeasure.Domain.Abstractions;
+using ColorMeasure.Domain.Entities;
 using ColorMeasure.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,15 +33,17 @@ internal static class Program
             var outOpt = new Option<string>("--out", () => Path.Combine(Environment.CurrentDirectory, "runs", DateTime.Now.ToString("yyyyMMdd-HHmmss")), "Output directory");
             var connectOpt = new Option<string>("--connect", () => "auto", "Connection mode: auto|usb");
             var dryRunOpt = new Option<bool>("--dry-run", "Parse plan only, do not connect hardware");
+            var displayStateOpt = new Option<string>("--display-state", () => "", "Declare the display signal chain: sdr|hdr (overrides the recipe; empty = use recipe value)");
             root.Add(planArg);
             root.Add(outOpt);
             root.Add(connectOpt);
             root.Add(dryRunOpt);
+            root.Add(displayStateOpt);
 
-            root.SetHandler(async (string plan, string outDir, string connect, bool dryRun) =>
+            root.SetHandler(async (string plan, string outDir, string connect, bool dryRun, string displayState) =>
             {
-                await RunAsync(plan, outDir, connect, dryRun);
-            }, planArg, outOpt, connectOpt, dryRunOpt);
+                await RunAsync(plan, outDir, connect, dryRun, displayState);
+            }, planArg, outOpt, connectOpt, dryRunOpt, displayStateOpt);
 
             return await root.InvokeAsync(args);
         }
@@ -52,7 +55,7 @@ internal static class Program
         finally { await Log.CloseAndFlushAsync(); }
     }
 
-    private static async Task RunAsync(string planPath, string outDir, string connect, bool dryRun)
+    private static async Task RunAsync(string planPath, string outDir, string connect, bool dryRun, string displayStateOverride)
     {
         var parseResult = TestPlanParser.ParseFile(planPath);
         if (parseResult.IsFailure)
@@ -62,8 +65,27 @@ internal static class Program
             return;
         }
         var plan = parseResult.Value!;
-        Log.Information("Plan: {Name}, {PatchCount} patches, targets=[{Targets}], settle={Settle}ms",
-            plan.Name, plan.Patches.Count, string.Join(",", plan.Targets), plan.SettleMs);
+
+        // --display-state overrides the recipe's declared display state.
+        if (!string.IsNullOrWhiteSpace(displayStateOverride))
+        {
+            var declared = displayStateOverride.Trim().ToLowerInvariant() switch
+            {
+                "sdr" => DisplayState.Sdr,
+                "hdr" => DisplayState.Hdr,
+                "unknown" => DisplayState.Unknown,
+                _ => DisplayState.Unknown,
+            };
+            if (!string.Equals(displayStateOverride.Trim(), "unknown", StringComparison.OrdinalIgnoreCase)
+                && declared == DisplayState.Unknown)
+            {
+                Log.Warning("Unknown --display-state '{Value}', expected sdr|hdr", displayStateOverride);
+            }
+            plan = plan with { DisplayState = declared };
+        }
+
+        Log.Information("Plan: {Name}, {PatchCount} patches, targets=[{Targets}], settle={Settle}ms, displayState={DisplayState}",
+            plan.Name, plan.Patches.Count, string.Join(",", plan.Targets), plan.SettleMs, plan.DisplayState);
 
         if (dryRun)
         {
@@ -112,6 +134,22 @@ internal static class Program
             Log.Information("  {Target}: coverage={Cov:P1}, max dE2000={De:F2}, dUv(W)={Duv:F4}, {Result}",
                 g.Target.Name, g.CoverageRatio, g.MaxPrimaryDeltaE2000, g.WhiteDeltaUv,
                 g.Passed ? "PASS" : "FAIL");
+        }
+
+        if (run.LinkHealth is { } health)
+        {
+            switch (health.Verdict)
+            {
+                case LinkVerdict.NonSdrLikely:
+                    Log.Error("Signal chain: {Summary}", health.Summary);
+                    break;
+                case LinkVerdict.Suspicious:
+                    Log.Warning("Signal chain: {Summary}", health.Summary);
+                    break;
+                default:
+                    Log.Information("Signal chain: {Summary}", health.Summary);
+                    break;
+            }
         }
     }
 

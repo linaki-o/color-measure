@@ -11,6 +11,7 @@ patch 的 XYZ/亮度/色温等数据，对比 sRGB / DCI-P3 / AdobeRGB / Rec.202
 - **色域覆盖率与 dE2000**：每个目标色域算 Coverage 和 R/G/B/W 的 ΔE2000
 - **白点偏差 Δu'v' (W)**：CIE 1976 UCS 中白点到 D65 的距离
 - **Gamma 拟合**：对灰阶 ramp 做 log-log OLS 拟合 γ、a、R²、Black/White cd/m²
+- **信号链路体检**：自动判断本次数据是否还代表面板原生色彩特性（识别 Windows HDR 开启导致的 SDR→HDR 转换改写）
 - **CIE 1931 xy 色度图**：连续色彩场（每个 0.8% 栅格按 sRGB 等价色填色）、参考线、波长刻度
 - **4 套输出文件**：CSV（原始样本）+ XLSX（摘要）+ PDF（A4 报告）+ **HTML（自包含交互式）**
 - **WPF 配方编辑器**（v1）：可视化编辑 JSON 配方，所见即所得的色彩选择器
@@ -114,6 +115,24 @@ dotnet run --project src\ColorMeasure.Host.Cli -- `
 start runs\demo\report.html
 ```
 
+### 声明显示器信号链路（重要）
+
+工具送的是 **8-bit sRGB SDR** 信号。如果 Windows HDR 或显示器 OSD 的 HDR 模式开着，
+这个信号会被 SDR→HDR 转换改写，测到的色域/亮度就不代表面板原生值了。
+**声明当前状态**，工具会在报告里给出体检结论：
+
+```powershell
+# SDR 模式（Windows HDR 关 + 显示器 OSD HDR 关）
+color-measure --plan recipes\gamma-ramp.json --out runs\sdr --display-state sdr
+
+# HDR 模式
+color-measure --plan recipes\gamma-ramp.json --out runs\hdr --display-state hdr
+```
+
+也可以写进配方（`recipes/*.json` 里的 `displayState` 字段），WPF 编辑器里也有对应下拉框。
+体检结论会出现在 CLI 日志和 HTML 报告顶部的「信号链路体检」卡片里。
+详见 [`docs/color-science.md#信号链路体检link-health`](docs/color-science.md#信号链路体检link-health)。
+
 ### 直接跑 exe（不想每次 build）
 
 ```powershell
@@ -154,8 +173,9 @@ ColorMeasure.sln
 │   ├── ColorMeasure.Infrastructure  CA-SDK2 适配、GPU 全屏驱动、报表
 │   ├── ColorMeasure.Host.Cli        CLI 入口（color-measure.exe）
 │   └── ColorMeasure.Host.Wpf        WPF 配方编辑器（v1）
-├── tests/                           62 个测试，覆盖 Ciede2000 / ColorAnalyzer / Gamma /
-│                                   HtmlReport / RecipeSerializer
+├── tests/                           75 个测试，覆盖 Ciede2000 / ColorAnalyzer / Gamma /
+│                                   LinkHealth / TestPlanParser / HtmlReport /
+│                                   CsvReport / RecipeSerializer
 ├── native/                           vendor 的 CASDK2*.dll + CA200Srvr.dll
 ├── recipes/                          测试配方 JSON 示例
 └── docs/                              详细文档
@@ -175,7 +195,7 @@ ColorMeasure.sln
 | [`docs/usage.md`](docs/usage.md) | recipe JSON schema + CLI 全部参数 |
 | [`docs/reports.md`](docs/reports.md) | CSV / XLSX / PDF / HTML 4 套输出文件结构 |
 | [`docs/wpf-editor.md`](docs/wpf-editor.md) | WPF 配方编辑器（v1）使用 |
-| [`docs/color-science.md`](docs/color-science.md) | Δu'v'、ΔE2000、gamma、色温概念与判读 |
+| [`docs/color-science.md`](docs/color-science.md) | Δu'v'、ΔE2000、gamma、色温、**信号链路体检** |
 | [`docs/recipes.md`](docs/recipes.md) | 3 套典型配方 + 写作技巧 |
 
 ## 关键术语
@@ -189,8 +209,8 @@ ColorMeasure.sln
 
 ## 现状
 
-- **v0.1+**（已实现）：色域覆盖率 + ΔE2000 + Δu'v'(W) + Gamma 拟合 + CIE 1931 连续色彩场 + 4 套报告 + WPF 配方编辑器
-- **v1**（路线图）：WPF 内直接运行测量（Workflow 注入）、Flicker（JEITA/FMA/波形）、DDC/CI 控制、外部 Pattern Generator、ICC profile 输出
+- **v0.1+**（已实现）：色域覆盖率 + ΔE2000 + Δu'v'(W) + Gamma 拟合 + **信号链路体检** + CIE 1931 连续色彩场 + 4 套报告 + WPF 配方编辑器
+- **v1**（路线图）：WPF 内直接运行测量（Workflow 注入）、Flicker（JEITA/FMA/波形）、DDC/CI 控制、外部 Pattern Generator、ICC profile 输出、**真 HDR 信号输出（DXGI swapchain）** |
 
 ## 致谢与引用
 

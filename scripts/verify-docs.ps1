@@ -44,8 +44,14 @@ $out = dotnet test "$root\ColorMeasure.sln" -c Debug --nologo 2>&1 | Select-Stri
     if ($_ -match '通过:\s+(\d+).*总计:\s+(\d+)') { [int]$matches[2] }
 }
 $total = ($out | Measure-Object -Sum).Sum
-Check "62 tests total" ($total -eq 62) "actual=$total"
-Check "README mentions 62" ($readme -match '62') "not found"
+Check "test count > 0" ($total -gt 0) "actual=$total"
+# The README states the test count; keep them in sync.
+$claimed = [regex]::Match($readme, '(\d+)\s*个测试')
+if ($claimed.Success) {
+    Check "README test count matches actual ($total)" ([int]$claimed.Groups[1].Value -eq $total) "README says $($claimed.Groups[1].Value), actual $total"
+} else {
+    Check "README states a test count" $false "no 'N 个测试' found"
+}
 
 Write-Host "=== 8. README package list matches csproj ==="
 $pkgs = @{}
@@ -70,8 +76,11 @@ Check "has 4 outputs" ($readme -match '4 套输出文件') "not found"
 
 Write-Host "=== 11. doc links all resolve ==="
 [regex]::Matches($readme, '\]\((docs/[^)]+)\)') | ForEach-Object {
-    $p = Join-Path $root $_.Groups[1].Value
-    Check "link exists: $($_.Groups[1].Value)" (Test-Path $p) "missing"
+    $target = $_.Groups[1].Value
+    # Strip any #anchor before checking the file exists.
+    $file = ($target -split '#')[0]
+    $p = Join-Path $root $file
+    Check "link exists: $target" (Test-Path $p) "missing"
 }
 
 Write-Host ""
